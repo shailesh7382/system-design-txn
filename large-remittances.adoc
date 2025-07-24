@@ -378,3 +378,19 @@ To horizontally scale a JBoss-based system, consider the following:
 - *Network Considerations*: Ensure network bandwidth and latency are sufficient for inter-instance communication, especially for clustered features.
 
 By following these practices, JBoss applications can be scaled horizontally to handle increased load, improve availability, and support high-throughput transaction processing.
+
+== Summary
+
+This document provides a comprehensive guide to designing, scaling, and tuning a high-volume remittance system. It covers:
+
+- Typical transaction volumes in large banks
+- Core system components and REST-based architecture on JBoss
+- Key design principles for scalability, reliability, performance, and security
+- Step-by-step design and measurement of non-functional requirements
+- Strategies for increasing throughput and maintaining low latency
+- Concepts of concurrency, parallelism, and horizontal scaling
+- Best practices for connection pooling, database, and JBoss tuning
+- Evaluation of big data technologies (Hadoop/HBase, Spark) for throughput and latency
+- Practical considerations for horizontally scaling JBoss deployments
+
+By following these guidelines, architects and engineers can build robust, scalable, and efficient remittance systems capable of meeting demanding business and technical requirements.
