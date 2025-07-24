@@ -394,3 +394,64 @@ This document provides a comprehensive guide to designing, scaling, and tuning a
 - Practical considerations for horizontally scaling JBoss deployments
 
 By following these guidelines, architects and engineers can build robust, scalable, and efficient remittance systems capable of meeting demanding business and technical requirements.
+
+== Typical Oracle Database Call Latency
+
+The time taken for an Oracle database call can vary widely depending on several factors:
+
+- *Simple SELECT/INSERT/UPDATE*: Typically 5–20 milliseconds for well-indexed, small transactions under normal load.
+- *Complex Queries/Joins*: Can range from tens to hundreds of milliseconds, or more if the query is not optimized.
+- *Network Latency*: Adds overhead if the application server and database are on different hosts or data centers.
+- *Connection Pooling*: Reduces latency by reusing connections, avoiding the overhead of establishing new ones.
+- *Database Load*: High concurrency, locking, or resource contention can increase response times.
+- *Configuration & Tuning*: Proper indexing, query optimization, and hardware resources help minimize latency.
+
+For high-throughput, low-latency systems, aim for database calls to complete in under 20 milliseconds for simple operations, and continuously monitor and optimize for consistent performance.
+
+== End-to-End Latency in Distributed Systems
+
+End-to-end latency is the total time taken for a request to travel through all components of a distributed system, from initiation to final response. It includes network delays, processing times at each service, queuing delays, and any external system interactions.
+
+=== How to Measure End-to-End Latency
+
+- *Instrumentation*: Add timestamps at key points (request received, service entry/exit, external calls, response sent).
+- *Distributed Tracing*: Use tools like OpenTracing, Jaeger, Zipkin, or AWS X-Ray to trace requests across services.
+- *Log Correlation*: Correlate logs using unique request IDs to reconstruct the full path and timing.
+- *Synthetic Transactions*: Send test requests and measure total response time.
+
+=== Example: Remittance Transaction Latency
+
+The following diagram illustrates the flow and latency measurement points in a distributed remittance system:
+
+[plantuml,end-to-end-latency,svg]
+----
+@startuml
+actor Customer
+participant APIService
+participant TransactionProcessingEngine
+participant CoreBankingSystem
+participant PaymentGateway
+participant Database
+participant NotificationService
+
+Customer -> APIService : Initiate remittance (T0)
+APIService -> TransactionProcessingEngine : Forward request (T1)
+TransactionProcessingEngine -> CoreBankingSystem : Validate & check balance (T2)
+TransactionProcessingEngine -> PaymentGateway : Send to gateway (T3)
+PaymentGateway -> TransactionProcessingEngine : Confirmation (T4)
+TransactionProcessingEngine -> Database : Save confirmation (T5)
+TransactionProcessingEngine -> NotificationService : Notify customer (T6)
+NotificationService -> Customer : Delivery (T7)
+
+' Latency = T7 - T0 (total time from initiation to notification)
+@enduml
+----
+
+In this example, end-to-end latency is measured from the initial customer request (T0) to the final notification delivery (T7). Instrument each step to capture timestamps and calculate the total latency.
+
+=== Best Practices
+
+- Use distributed tracing for visibility across all services.
+- Monitor and alert on latency spikes.
+- Break down latency by component to identify bottlenecks.
+- Continuously optimize for lower end-to-end latency.
