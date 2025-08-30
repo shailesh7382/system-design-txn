@@ -1,5 +1,4 @@
-= System Design Considerations for High-Volume Remittance Settlement
-
+= System Design Considerations for High-Volume Remittance
 :toc:
 :toclevels: 3
 
@@ -7,7 +6,7 @@
 
 This document outlines the system design considerations, architecture, and practical steps for building a remittance system capable of processing a very high number of transactions per day.
 
-== Daily Remittance Volumes in Large Banks
+== Typical Daily Remittance Volumes
 
 A large bank may process anywhere from hundreds of thousands to several million remittance transactions per day, depending on its size, customer base, and geographic reach.
 
@@ -16,22 +15,22 @@ A large bank may process anywhere from hundreds of thousands to several million 
 
 == Core Systems Involved
 
-- *Core Banking System*: Manages customer accounts and balances.
-- *Payment Gateway*: Interfaces with external payment networks (SWIFT, ACH, RTGS, etc.).
-- *Transaction Processing Engine*: Orchestrates settlement, confirmation, and reconciliation.
-- *Message Queues/Event Streams*: Enables asynchronous processing and decoupling of services.
-- *Monitoring & Alerting Platform*: Tracks system health, performance, and failures.
-- *Data Warehousing/Analytics*: Stores historical data for analysis and reporting.
+- Core Banking System: Manages customer accounts and balances.
+- Payment Gateway: Interfaces with external payment networks (SWIFT, ACH, RTGS, etc.).
+- Transaction Processing Engine: Orchestrates settlement, confirmation, and reconciliation.
+- Message Queues/Event Streams: Enables asynchronous processing and decoupling of services.
+- Monitoring & Alerting Platform: Tracks system health, performance, and failures.
+- Data Warehousing/Analytics: Stores historical data for analysis and reporting.
 
-== System Architecture Example: REST-Based Remittance System on JBoss
+== System Architecture
 
-=== Deployment Model
+=== REST-Based Remittance System on JBoss
 
 - Multiple WAR files, each providing a specific REST service (validation, balance check, gateway integration, notification, etc.).
 - All services are deployed in a single JBoss application server instance.
 - Services communicate via RESTful APIs.
 
-=== Transaction Flow
+==== Transaction Flow
 
 . Validate customer information via a REST service.
 . Check account balances.
@@ -39,11 +38,11 @@ A large bank may process anywhere from hundreds of thousands to several million 
 . Save the confirmation response to the database.
 . Notify the customer of the transaction status.
 
-=== Performance
+==== Performance
 
 - The system can process a complete transaction cycle (from request to customer notification) in approximately 900 milliseconds.
 
-=== Considerations
+==== Key Considerations
 
 - Ensure each service is stateless for scalability.
 - Use connection pooling for database and gateway calls to maintain low latency.
@@ -51,7 +50,7 @@ A large bank may process anywhere from hundreds of thousands to several million 
 - Optimize thread pools and JBoss configuration for concurrent request handling.
 - Regularly test and tune for throughput and latency targets.
 
-== System Integration Diagram
+=== System Integration Diagram
 
 [plantuml,system-integration,svg]
 ----
@@ -67,19 +66,10 @@ RECTANGLE DataWarehouseAnalytics
 RECTANGLE APIService
 RECTANGLE CustomerPortal
 
-CoreBankingSystem -[hidden]-> PaymentGateway
-CoreBankingSystem -[hidden]-> TransactionProcessingEngine
-CoreBankingSystem -[hidden]-> MessageQueue
-CoreBankingSystem -[hidden]-> MonitoringAlertingPlatform
-CoreBankingSystem -[hidden]-> DataWarehouseAnalytics
-CoreBankingSystem -[hidden]-> APIService
-CoreBankingSystem -[hidden]-> CustomerPortal
-
 CustomerPortal --> APIService : Remittance request
 APIService --> TransactionProcessingEngine : API call
 
 TransactionProcessingEngine --> CoreBankingSystem : Account validation/update
-
 TransactionProcessingEngine --> PaymentGateway : Settlement request
 PaymentGateway --> TransactionProcessingEngine : Settlement confirmation
 
@@ -105,7 +95,7 @@ DataWarehouseAnalytics --> TransactionProcessingEngine : Analytics feedback
 @enduml
 ----
 
-== Remittance Settlement & Confirmation Flow
+=== Remittance Settlement & Confirmation Flow
 
 [plantuml,remittance-flow,svg]
 ----
@@ -136,25 +126,25 @@ stop
 
 == Key Design Considerations
 
-- *Scalability*: Use horizontally scalable architectures (microservices, distributed systems), load balancing, and data partitioning.
-- *Reliability & Fault Tolerance*: Implement retries, idempotency, redundancy, and failover strategies.
-- *Consistency & Integrity*: Choose appropriate consistency models (eventual or strong), validate and reconcile data, maintain audit trails.
-- *Performance*: Optimize queries, use caching, asynchronous processing, and monitor latency/throughput.
-- *Security*: Encrypt data, enforce authentication/authorization.
-- *Monitoring & Observability*: Centralized logging, alerting, and metric tracking.
-- *Disaster Recovery*: Regular backups and tested restoration procedures.
+- Scalability: Use horizontally scalable architectures, load balancing, and data partitioning.
+- Reliability & Fault Tolerance: Implement retries, idempotency, redundancy, and failover strategies.
+- Consistency & Integrity: Choose appropriate consistency models, validate and reconcile data, maintain audit trails.
+- Performance: Optimize queries, use caching, asynchronous processing, and monitor latency/throughput.
+- Security: Encrypt data, enforce authentication/authorization.
+- Monitoring & Observability: Centralized logging, alerting, and metric tracking.
+- Disaster Recovery: Regular backups and tested restoration procedures.
 
 == Step-by-Step Guide to Optimal System Design
 
-. *Define Requirements*
-. *Choose Architecture*
-. *Design Data Model*
-. *Implement Processing Logic*
-. *Integrate Security*
-. *Set Up Monitoring & Alerting*
-. *Test for Reliability & Performance*
-. *Prepare Disaster Recovery*
-. *Iterate & Optimize*
+. Define requirements and NFR targets.
+. Choose scalable, modular architecture.
+. Design data model and APIs.
+. Implement processing logic and workflows.
+. Integrate security at all layers.
+. Set up monitoring, alerting, and logging.
+. Test for reliability, performance, and scalability.
+. Prepare disaster recovery and backup plans.
+. Iterate and optimize based on feedback and metrics.
 
 == Measuring Non-Functional Requirements (NFRs)
 
@@ -198,213 +188,145 @@ stop
 
 == Strategies to Increase Throughput
 
-- *Horizontal Scaling*: Add more instances of stateless services and databases to distribute load.
-- *Partitioning/Sharding*: Split data and workload across multiple database shards or service partitions.
-- *Asynchronous Processing*: Use message queues and event-driven architecture to decouple components and process transactions in parallel.
-- *Batch Processing*: Group and process remittance transactions in batches where possible to reduce overhead.
-- *Optimized Data Access*: Use efficient indexing, caching, and minimize database round-trips.
-- *Concurrency*: Design services to handle multiple requests concurrently using non-blocking I/O and thread pools.
-- *Microservices*: Break down monolithic logic into focused, independently scalable services.
-- *Load Balancing*: Distribute incoming requests evenly across service instances.
-- *Connection Pooling*: Use connection pools for databases and external systems to reduce latency.
-- *Resource Monitoring & Auto-scaling*: Continuously monitor system load and automatically scale resources as needed.
+- Horizontal scaling: Add more instances of stateless services and databases.
+- Partitioning/sharding: Split data and workload across multiple database shards or service partitions.
+- Asynchronous processing: Use message queues and event-driven architecture.
+- Batch processing: Group and process remittance transactions in batches.
+- Optimized data access: Use efficient indexing, caching, and minimize database round-trips.
+- Concurrency: Design services to handle multiple requests concurrently using non-blocking I/O and thread pools.
+- Microservices: Break down monolithic logic into focused, independently scalable services.
+- Load balancing: Distribute incoming requests evenly across service instances.
+- Connection pooling: Use connection pools for databases and external systems.
+- Resource monitoring & auto-scaling: Continuously monitor system load and automatically scale resources.
 
-== Ways to Horizontally Scale a System
+== Horizontal Scaling Approaches
 
-- *Stateless Services*: Design services to be stateless so any instance can handle any request.
-- *Service Replication*: Run multiple instances of each service behind a load balancer.
-- *Database Sharding*: Partition data across multiple database servers to distribute load.
-- *Distributed Caching*: Use distributed cache systems (e.g., Redis, Memcached) to reduce database load.
-- *Message Queues*: Use queues to decouple producers and consumers, allowing parallel processing.
-- *Microservices Architecture*: Split functionality into independently deployable and scalable services.
-- *Auto-scaling*: Use orchestration platforms (e.g., Kubernetes, AWS ECS) to automatically add/remove instances based on demand.
-- *Geographical Distribution*: Deploy services in multiple regions to serve users closer to their location.
-- *API Gateways & Load Balancers*: Route requests efficiently across service instances.
-- *Distributed File Storage*: Use distributed storage solutions for files and large objects.
+- Stateless services: Design services to be stateless so any instance can handle any request.
+- Service replication: Run multiple instances of each service behind a load balancer.
+- Database sharding: Partition data across multiple database servers.
+- Distributed caching: Use distributed cache systems (e.g., Redis, Memcached).
+- Message queues: Use queues to decouple producers and consumers.
+- Microservices architecture: Split functionality into independently deployable and scalable services.
+- Auto-scaling: Use orchestration platforms (e.g., Kubernetes, AWS ECS).
+- Geographical distribution: Deploy services in multiple regions.
+- API gateways & load balancers: Route requests efficiently.
+- Distributed file storage: Use distributed storage solutions for files and large objects.
 
-== Maintaining Low Latency While Increasing Throughput
+== Managing a Large Number of REST API Endpoints
 
-- *Efficient Asynchronous Processing*: Use non-blocking I/O and event-driven architectures to avoid bottlenecks.
-- *Prioritize Critical Paths*: Optimize the most time-sensitive operations (e.g., settlement and confirmation) for speed.
-- *Minimize Network Hops*: Reduce the number of service calls and network transfers in the transaction flow.
-- *Locality of Data*: Place frequently accessed data closer to processing nodes using caching or data replication.
-- *Resource Isolation*: Allocate dedicated resources (CPU, memory) for latency-sensitive services.
-- *Load Shedding*: Gracefully reject or defer non-critical requests during peak loads to protect latency.
-- *Monitor and Tune*: Continuously monitor latency metrics and tune system parameters (thread pools, queue sizes, etc.).
-- *Optimize Database Access*: Use fast storage, efficient queries, and connection pooling to reduce database latency.
-- *Scale Horizontally*: Add more service instances to handle increased load without queuing delays.
+Effectively managing a large number of REST API endpoints is crucial for maintainability, scalability, and clarity in high-volume systems. Consider the following best practices:
 
-== Concurrency and Parallelism: Impact on Latency and Throughput
+- Modularization: Organize endpoints by functional domains or bounded contexts, grouping related APIs into separate modules or services.
+- Versioning: Use clear API versioning (e.g., `/api/v1/`) to manage changes and backward compatibility.
+- Consistent Naming Conventions: Apply consistent and descriptive naming for resources and actions to improve discoverability and reduce confusion.
+- API Gateway: Employ an API gateway to centralize routing, authentication, rate limiting, and monitoring for all endpoints.
+- Documentation: Use tools like OpenAPI/Swagger to auto-generate and maintain up-to-date API documentation.
+- Code Generation: Leverage code generation tools to reduce boilerplate and enforce consistency across endpoints.
+- Pagination & Filtering: Implement pagination, filtering, and sorting for endpoints returning large datasets to optimize performance.
+- Security: Apply consistent authentication and authorization mechanisms across all endpoints.
+- Monitoring & Analytics: Track usage, errors, and performance metrics for each endpoint to identify bottlenecks and optimize hot paths.
+- Deprecation Policy: Establish a clear process for deprecating and removing obsolete endpoints.
 
-- *Concurrency* refers to the ability of a system to handle multiple tasks at the same time, by managing many tasks that may be in progress but not necessarily executing simultaneously.
-- *Parallelism* is the ability to execute multiple tasks simultaneously, typically by leveraging multiple CPU cores or distributed nodes.
+By following these practices, you can ensure your REST API remains scalable, maintainable, and easy to evolve as your system grows.
 
-=== Impact on Latency and Throughput
+== Security Considerations
 
-- *Throughput* increases when more tasks are processed in a given time frame, which is achieved by maximizing parallelism.
-- *Latency* can be reduced by minimizing waiting times and efficiently scheduling concurrent tasks, but excessive concurrency can lead to contention and increased latency if not managed properly.
+Security is critical in remittance systems to protect sensitive data and prevent fraud. Consider the following security measures:
 
-=== System Design Considerations
+- Data Encryption: Encrypt sensitive data at rest and in transit using strong encryption standards (e.g., AES, TLS).
+- Authentication: Implement strong authentication mechanisms (e.g., OAuth 2.0, OpenID Connect) for users and systems.
+- Authorization: Enforce fine-grained access control and permissions for resources and actions.
+- Input Validation: Rigorously validate and sanitize all inputs to prevent injection attacks and data corruption.
+- Logging and Monitoring: Maintain detailed logs of all transactions and access attempts. Monitor logs for suspicious activities.
+- Fraud Detection: Implement mechanisms to detect and prevent fraudulent transactions (e.g., anomaly detection, transaction limits).
+- Regular Security Audits: Conduct regular security assessments, penetration testing, and code reviews to identify and remediate vulnerabilities.
+- Compliance: Ensure compliance with relevant regulations and standards (e.g., PCI DSS, GDPR, local financial regulations).
 
-- Design stateless services to allow easy scaling and parallel execution.
-- Use asynchronous processing and non-blocking I/O to maximize concurrency without blocking threads.
-- Employ thread pools and event loops to efficiently manage concurrent workloads.
-- Partition workloads and data to enable parallel processing across multiple nodes or cores.
-- Monitor and tune resource allocation to avoid bottlenecks and contention.
-- Ensure data consistency and integrity when accessing shared resources concurrently.
-- Balance concurrency and parallelism to optimize both latency and throughput for your workload.
+By incorporating these security measures, you can significantly reduce the risk of security breaches and fraud in your remittance system.
 
-== Connection Pooling
+== Performance Optimization Techniques
 
-Connection pooling is a technique used to manage and reuse database or external system connections efficiently, reducing the overhead of establishing new connections for each request. It helps maintain low latency and high throughput, especially under heavy load.
+To achieve and maintain high performance in remittance systems, consider the following optimization techniques:
 
-Benefits:
-- Reduces connection creation/destruction overhead.
-- Limits resource usage by controlling the maximum number of concurrent connections.
-- Improves response times by reusing established connections.
-- Enables better handling of spikes in traffic.
+- Caching: Implement caching at multiple levels (e.g., database query results, API responses, static assets) to reduce latency and load.
+- Load Balancing: Distribute incoming requests evenly across multiple servers or instances to prevent overload and ensure high availability.
+- Database Optimization: Optimize database schema, queries, and indexes for fast data access. Consider read replicas for scaling reads.
+- Code Optimization: Profile and optimize application code to reduce processing time and resource consumption.
+- Network Optimization: Optimize network configuration and use Content Delivery Networks (CDNs) to reduce latency and improve data delivery speed.
+- Compression: Use data compression (e.g., Gzip) for API responses and static assets to reduce payload size and accelerate transmission.
+- Connection Pooling: Use connection pooling for databases and external services to reduce the overhead of establishing new connections.
+- Asynchronous Processing: Offload time-consuming tasks to background processes or asynchronous workflows to free up resources for handling requests.
+- Batch Processing: Process transactions in batches where possible to reduce overhead and improve throughput.
 
-Best Practices:
-- Tune pool size based on expected concurrency and backend capacity.
-- Monitor pool usage and configure timeouts for idle or abandoned connections.
-- Use separate pools for different services or databases if needed.
+Regularly profile and monitor system performance to identify bottlenecks and validate the impact of optimization efforts.
 
-Recommended Java Libraries:
-- **HikariCP**: Highly performant, lightweight JDBC connection pool. Often the default in modern Spring Boot applications. *Note: JDBC connection pools like HikariCP, Apache DBCP, and c3p0 are typically blocking; they manage connections efficiently but do not provide non-blocking I/O.*
-- **Apache DBCP**: Mature, stable, and widely used connection pool from Apache Commons.
-- **c3p0**: Robust, feature-rich JDBC connection pool.
-- **Agroal**: Modern, lightweight pool used in Quarkus and other Java frameworks.
+== Testing Strategies for High-Volume Remittance Systems
 
-For true non-blocking I/O in Java, consider using frameworks like:
-- **Vert.x**: Event-driven, non-blocking toolkit for building reactive applications.
-- **Netty**: Asynchronous event-driven network application framework.
-- **Spring WebFlux**: Supports non-blocking reactive programming with Project Reactor.
+Robust testing is essential to ensure the reliability, performance, and security of remittance systems. Consider the following testing strategies:
 
-Most traditional JDBC connection pools are blocking, but non-blocking I/O frameworks can be used for service-to-service communication and handling high concurrency without blocking threads.
+- Unit Testing: Test individual components and functions for correctness in isolation.
+- Integration Testing: Test interactions between integrated components and external systems (e.g., payment gateways, databases).
+- Functional Testing: Validate the system against business requirements and use cases.
+- Performance Testing: Measure system performance (throughput, latency) under expected and peak loads.
+- Load Testing: Simulate high transaction volumes to verify the system's behavior under stress.
+- Security Testing: Assess the system for vulnerabilities and security weaknesses.
+- User Acceptance Testing (UAT): Validate the system with end-users to ensure it meets their needs and expectations.
+- Regression Testing: Ensure that new changes do not adversely affect existing functionality.
 
-Proper connection pooling configuration is essential for maintaining system performance and reliability in high-volume transaction environments.
+Automate testing where possible to improve efficiency and coverage. Regularly review and update test cases and scenarios to reflect changes in the system and business requirements.
 
-== Database Tuning Aspects
+== Deployment Strategies
 
-Effective database tuning is crucial for maintaining low latency and high throughput in remittance systems. Key aspects include:
+Effective deployment strategies are crucial for delivering updates and new features with minimal disruption. Consider the following approaches:
 
-- *Indexing*: Create appropriate indexes on frequently queried columns to speed up lookups and joins.
-- *Query Optimization*: Analyze and optimize SQL queries to reduce execution time and resource consumption.
-- *Connection Pooling*: Use and tune connection pools to efficiently manage database connections.
-- *Partitioning/Sharding*: Split large tables or datasets across multiple physical storage units to distribute load.
-- *Caching*: Implement caching for frequently accessed data to reduce database hits.
-- *Database Configuration*: Tune parameters such as buffer pool size, cache size, and max connections for your workload.
-- *Batch Operations*: Use batch inserts/updates to minimize transaction overhead.
-- *Concurrency Control*: Adjust isolation levels and locking strategies to balance consistency and performance.
-- *Monitoring & Profiling*: Continuously monitor query performance, slow queries, and resource usage.
-- *Archiving & Purging*: Regularly archive or purge old data to keep tables lean and performant.
-- *Replication*: Use read replicas to offload reporting and analytics queries from the primary database.
+- Blue-Green Deployments: Maintain two identical production environments (blue and green). Deploy updates to the inactive environment, then switch traffic to it after validation.
+- Canary Releases: Gradually roll out changes to a small subset of users or transactions before a full-scale deployment.
+- Rolling Updates: Update instances or components incrementally, ensuring that some instances remain available to handle requests.
+- Feature Toggles: Use feature flags to enable or disable features at runtime, allowing for safe experimentation and gradual rollouts.
+- Infrastructure as Code (IaC): Manage and provision infrastructure using code and automation tools (e.g., Terraform, Ansible) for consistency and repeatability.
+- Containerization: Use containers (e.g., Docker) to package applications and dependencies for consistent deployment across environments.
+- Orchestration: Use orchestration platforms (e.g., Kubernetes, OpenShift) to automate deployment, scaling, and management of containerized applications.
 
-Applying these database tuning techniques helps ensure the system remains responsive and scalable as transaction volumes grow.
+Carefully plan and test deployment strategies to minimize risks and ensure a smooth transition between application versions.
 
-== JBoss Tuning for Throughput and Latency
+== Continuous Integration and Continuous Deployment (CI/CD)
 
-Proper tuning of the JBoss application server is essential for maximizing throughput and minimizing latency in a REST-based remittance system. Key tuning aspects include:
+Implementing CI/CD practices helps automate and streamline the process of integrating code changes, running tests, and deploying applications. Consider the following CI/CD practices:
 
-- *Thread Pool Configuration*: Increase the number of worker threads to handle more concurrent requests. Tune `maxThreads` and `coreThreads` in the HTTP connector.
-- *Connection Pooling*: Configure datasource connection pools for optimal size and timeout settings to avoid bottlenecks.
-- *JVM Tuning*: Allocate sufficient heap memory and tune garbage collection (GC) parameters to reduce GC pauses.
-- *I/O Subsystem*: Use non-blocking I/O connectors (e.g., Undertow) for better concurrency and lower latency.
-- *Session Management*: Prefer stateless services to avoid session replication overhead.
-- *Resource Limits*: Monitor and adjust file descriptors, open connections, and other OS-level resources.
-- *Deployment Optimization*: Deploy only necessary WAR files and remove unused services to reduce resource contention.
-- *Caching*: Enable and tune in-memory caches for frequently accessed data.
-- *Logging*: Set logging levels appropriately to minimize I/O overhead.
-- *Monitoring*: Use JBoss metrics and external tools to monitor thread usage, connection pool status, and response times.
+- Version Control: Use a version control system (e.g., Git) to manage source code and track changes.
+- Automated Testing: Integrate automated tests (unit, integration, performance) into the CI/CD pipeline to ensure code quality.
+- Build Automation: Automate the build process to compile code, run tests, and package applications for deployment.
+- Continuous Integration: Frequently integrate code changes into a shared repository, triggering automated builds and tests.
+- Continuous Deployment: Automatically deploy passing builds to production or staging environments, based on defined policies and approvals.
+- Monitoring and Alerts: Monitor CI/CD pipelines for failures and performance issues. Set up alerts for critical failures.
 
-Example configuration parameters to review:
-- `server.xml` or `standalone.xml` for HTTP connector thread settings
-- Datasource pool settings in `standalone.xml` or `domain.xml`
-- JVM options: `-Xms`, `-Xmx`, GC flags
+By adopting CI/CD practices, you can accelerate the delivery of new features and improvements while maintaining high quality and reliability.
 
-Regularly profile and load test the system to identify bottlenecks and validate tuning changes.
+== Cloud-Native Considerations
 
-[NOTE]
-====
-*Is Undertow best?*
-Undertow is the default web server for JBoss/WildFly and is highly regarded for its lightweight, high-performance, and non-blocking I/O capabilities. It is well-suited for RESTful services requiring high concurrency and low latency. For most enterprise Java deployments, Undertow is an excellent choice, especially when compared to older blocking connectors like Tomcat or Jetty. However, the "best" choice depends on specific requirements, but Undertow is recommended for modern, scalable applications.
+Designing remittance systems as cloud-native applications offers benefits such as scalability, flexibility, and resilience. Consider the following cloud-native principles:
 
-*Comparable Choices:*
-- **Apache Tomcat**: Widely used, mature, and stable. Primarily blocking I/O, but supports asynchronous servlets. Good for traditional web apps.
-- **Jetty**: Lightweight, embeddable, and supports both blocking and non-blocking I/O. Popular for microservices and cloud deployments.
-- **Netty**: Low-level, fully asynchronous event-driven network framework. Used for building highly scalable, non-blocking servers and frameworks.
-- **Spring WebFlux (with Netty or Undertow)**: For reactive, non-blocking applications using the Spring ecosystem.
+- Microservices Architecture: Build applications as a collection of loosely coupled, independently deployable services.
+- Containerization: Package services and dependencies in containers for consistent deployment and scaling.
+- Dynamic Orchestration: Use orchestration platforms (e.g., Kubernetes) to manage the lifecycle, scaling, and networking of containers.
+- Service Mesh: Implement a service mesh (e.g., Istio, Linkerd) to manage service-to-service communication, security, and monitoring.
+- API Gateway: Use an API gateway to manage external access to services, including routing, authentication, and rate limiting.
+- Event-Driven Architecture: Use events and messaging for communication between services, enabling loose coupling and asynchronous processing.
+- Resilience and Fault Tolerance: Design for failure by implementing retries, circuit breakers, and failover mechanisms.
+- Observability: Implement centralized logging, monitoring, and tracing to gain insights into system behavior and performance.
 
-Choose based on your application's concurrency needs, deployment model, and familiarity with the ecosystem.
-====
-
-== Evaluation: Hadoop (HBase) and Apache Spark for High-Volume Remittance Systems
-
-Hadoop (with HBase) and Apache Spark are popular big data technologies. Their suitability for high-throughput, low-latency remittance systems depends on specific requirements:
-
-=== Hadoop & HBase
-
-- *Strengths*: HBase provides scalable, distributed storage for large volumes of transactional data. It is well-suited for write-heavy workloads and can horizontally scale to handle millions of transactions.
-- *Limitations*: HBase is optimized for throughput and large-scale data, but typical read/write latencies are higher than traditional RDBMS or in-memory stores. Real-time, low-latency requirements (sub-second) may be challenging for HBase, especially for transactional consistency and immediate confirmations.
-
-=== Apache Spark
-
-- *Strengths*: Spark excels at distributed, parallel processing for analytics, batch jobs, and streaming data. It can process large datasets quickly and scale horizontally.
-- *Limitations*: Spark is not a transactional database and is best used for data processing, analytics, and ETL. For real-time transaction processing and immediate response (e.g., <1 second latency per transaction), Spark is not ideal as the primary transaction engine.
-
-=== Suitability
-
-- *High Throughput*: Both HBase and Spark can handle very high throughput due to their distributed nature.
-- *Low Latency*: Achieving consistent sub-second latency for individual remittance transactions is difficult with Hadoop/HBase and Spark alone. They are better suited for batch processing, analytics, and historical data storage.
-- *Recommended Use*: Use HBase and Spark for analytics, reporting, and batch settlement/reconciliation. For real-time transaction processing and customer notification, combine them with low-latency databases (e.g., RDBMS, NoSQL stores like Cassandra) and in-memory caching.
-
-=== Conclusion
-
-Hadoop (HBase) and Apache Spark are excellent for scaling throughput and handling large data volumes, but may not meet strict low-latency requirements for real-time remittance settlement and confirmation. A hybrid architecture, leveraging these technologies for analytics and batch operations alongside low-latency transactional systems, is recommended for optimal results.
-
-== Considerations for Achieving Horizontal Scaling with JBoss
-
-To horizontally scale a JBoss-based system, consider the following:
-
-- *Stateless Services*: Design applications to be stateless so any instance can handle any request, simplifying scaling and load balancing.
-- *Session Management*: Use token-based authentication or external session stores (e.g., Redis) to avoid sticky sessions and session replication overhead.
-- *Load Balancing*: Deploy multiple JBoss instances behind a load balancer (e.g., HAProxy, NGINX, AWS ELB) to distribute incoming requests evenly.
-- *Cluster Configuration*: Use JBoss clustering features for distributed deployments, but prefer stateless services for simplicity and performance.
-- *Shared Resources*: Externalize shared resources (databases, caches, file storage) so all instances can access them consistently.
-- *Service Discovery*: Implement service discovery for dynamic scaling and failover (e.g., with Kubernetes, Consul, or Eureka).
-- *Configuration Management*: Use centralized configuration management to ensure consistency across all instances.
-- *Automated Deployment*: Employ orchestration tools (Docker, Kubernetes, OpenShift) for automated scaling, deployment, and management.
-- *Health Checks & Monitoring*: Integrate health checks and monitoring to detect failed instances and trigger auto-scaling or replacement.
-- *Network Considerations*: Ensure network bandwidth and latency are sufficient for inter-instance communication, especially for clustered features.
-
-By following these practices, JBoss applications can be scaled horizontally to handle increased load, improve availability, and support high-throughput transaction processing.
-
-== Summary
-
-This document provides a comprehensive guide to designing, scaling, and tuning a high-volume remittance system. It covers:
-
-- Typical transaction volumes in large banks
-- Core system components and REST-based architecture on JBoss
-- Key design principles for scalability, reliability, performance, and security
-- Step-by-step design and measurement of non-functional requirements
-- Strategies for increasing throughput and maintaining low latency
-- Concepts of concurrency, parallelism, and horizontal scaling
-- Best practices for connection pooling, database, and JBoss tuning
-- Evaluation of big data technologies (Hadoop/HBase, Spark) for throughput and latency
-- Practical considerations for horizontally scaling JBoss deployments
-
-By following these guidelines, architects and engineers can build robust, scalable, and efficient remittance systems capable of meeting demanding business and technical requirements.
+By following cloud-native principles, you can build remittance systems that are scalable, resilient, and easier to manage in dynamic cloud environments.
 
 == Typical Oracle Database Call Latency
 
 The time taken for an Oracle database call can vary widely depending on several factors:
 
-- *Simple SELECT/INSERT/UPDATE*: Typically 5–20 milliseconds for well-indexed, small transactions under normal load.
-- *Complex Queries/Joins*: Can range from tens to hundreds of milliseconds, or more if the query is not optimized.
-- *Network Latency*: Adds overhead if the application server and database are on different hosts or data centers.
-- *Connection Pooling*: Reduces latency by reusing connections, avoiding the overhead of establishing new ones.
-- *Database Load*: High concurrency, locking, or resource contention can increase response times.
-- *Configuration & Tuning*: Proper indexing, query optimization, and hardware resources help minimize latency.
+- Simple SELECT/INSERT/UPDATE: Typically 5–20 milliseconds for well-indexed, small transactions under normal load.
+- Complex Queries/Joins: Can range from tens to hundreds of milliseconds, or more if the query is not optimized.
+- Network Latency: Adds overhead if the application server and database are on different hosts or data centers.
+- Connection Pooling: Reduces latency by reusing connections, avoiding the overhead of establishing new ones.
+- Database Load: High concurrency, locking, or resource contention can increase response times.
+- Configuration & Tuning: Proper indexing, query optimization, and hardware resources help minimize latency.
 
 For high-throughput, low-latency systems, aim for database calls to complete in under 20 milliseconds for simple operations, and continuously monitor and optimize for consistent performance.
 
@@ -414,17 +336,45 @@ Netty can be used as the underlying HTTP server for a Spring Boot application. I
 
 To leverage Netty inside JBoss, consider the following approaches:
 
-- **Standalone Spring Boot with Netty:**
-  Run your Spring Boot application as a standalone service (using the embedded Netty server) outside of JBoss. This is the most straightforward way to use Netty, but it runs independently from the JBoss container.
+- Standalone Spring Boot with Netty: Run your Spring Boot application as a standalone service (using the embedded Netty server) outside of JBoss.
+- Spring Boot WAR in JBoss: Deploying a WAR disables embedded Netty; JBoss's servlet engine handles HTTP requests.
+- Internal Netty Usage: Use Netty for internal networking (e.g., async messaging) within your app, even in JBoss.
+- Proxy Approach: Deploy Netty-based Spring Boot service separately and use JBoss as a gateway/proxy.
 
-- **Spring Boot WAR in JBoss:**
-  If you deploy a Spring Boot WAR to JBoss, the embedded Netty server is disabled, and JBoss's servlet engine (Undertow, Tomcat, or Jetty) will handle HTTP requests. Netty will not be used as the HTTP server in this mode.
+Netty cannot directly replace the JBoss HTTP engine when deploying a WAR. For full Netty capabilities, run your Spring Boot app as a standalone service.
 
-- **Internal Netty Usage:**
-  You can use Netty as a client or for internal networking within your Spring Boot application (e.g., for asynchronous messaging or custom protocols), even when deployed in JBoss. However, HTTP requests from clients will still be handled by JBoss's servlet engine.
+== Deployment on Bare Metal Linux (RHEL)
 
-- **Proxy Approach:**
-  Deploy your Netty-based Spring Boot service separately and use JBoss as an API gateway or proxy, forwarding requests to the Netty service as needed.
+Deploying a high-volume remittance system on bare metal Red Hat Enterprise Linux (RHEL) servers offers direct control over hardware resources, OS tuning, and network configuration.
 
-**Summary:**
-Netty cannot directly replace the JBoss HTTP engine when deploying a WAR. For full Netty capabilities, run your Spring Boot app as a standalone service. For internal use, Netty can be leveraged for non-HTTP networking tasks within your application, regardless of the deployment model.
+=== Resource Allocation
+
+- Allocate dedicated CPU, memory, and storage for critical components (e.g., JBoss, databases) to avoid contention.
+
+=== OS Tuning
+
+- Increase file descriptors (`ulimit -n`) for concurrent connections.
+- Adjust process/thread limits (`ulimit -u`).
+- Tune TCP parameters and network buffers.
+- Enable interrupt coalescing and optimize NIC settings.
+- Adjust kernel parameters in `/etc/sysctl.conf`.
+- Configure NUMA awareness for multi-socket systems.
+- Use deadline or noop I/O schedulers for SSD/NVMe.
+- Enable HugePages for large memory allocations.
+- SSH Key Management: Use secure, unique keys, rotate regularly, and restrict permissions.
+- Host File Management: Maintain `/etc/hosts` for static mappings, ensure consistency.
+- iptables Management: Restrict network access, define explicit rules, use `firewalld` for management.
+- Securing Network Communication: Use `stunnel` for SSL/TLS, or alternatives like OpenSSL, Nginx, HAProxy, SSH tunneling, socat, or VPNs.
+
+=== Storage and Redundancy
+
+- Use RAID 10 for performance and redundancy.
+- Prefer NVMe/SSD for low-latency, high-throughput storage.
+- Configure multipath I/O for redundancy in SAN.
+- Use XFS or ext4 filesystems, tuned for workload.
+- Implement database-level replication for high availability.
+- Schedule regular, automated backups and test restores.
+- Use snapshots for fast recovery.
+- Deploy UPS and redundant power supplies.
+
+By carefully tuning the OS and designing robust storage and redundancy strategies, you can ensure your remittance system delivers consistent performance and high availability even under demanding conditions.
