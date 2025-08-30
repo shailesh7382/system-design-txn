@@ -1,0 +1,378 @@
+= Java SE 21 (JDK 21)
+:toc:
+:toclevels: 4
+
+== Introduction
+
+This document provides a structured overview of new features, enhancements, JVM parameter changes, garbage collector comparisons, and a feature timeline from JDK 11 to JDK 21.
+
+== Feature Timeline: JDK 11 to JDK 21
+
+This section summarizes the major features and enhancements introduced in each JDK release from 11 to 21.
+
+[cols="1,4"]
+|===
+| Version | Key Features
+
+| JDK 11
+| - Local-Variable Syntax for Lambda Parameters (var)
+  - HTTP Client (Standard)
+  - Flight Recorder
+  - ZGC (Experimental)
+  - Epsilon GC (Experimental)
+  - String methods: `isBlank`, `lines`, `strip`, `repeat`
+  - Running single-file source-code programs
+  - TLS 1.3 support
+
+| JDK 12
+| - Switch Expressions (Preview)
+  - Shenandoah GC (Experimental)
+  - JVM Constants API
+  - Compact Number Formatting
+  - Microbenchmark Suite
+
+| JDK 13
+| - Text Blocks (Preview)
+  - Dynamic CDS Archives
+  - Reimplement the Legacy Socket API
+  - Switch Expressions (2nd Preview)
+
+| JDK 14
+| - Records (Preview)
+  - Pattern Matching for instanceof (Preview)
+  - Helpful NullPointerExceptions
+  - NVM File Mapping
+  - Foreign-Memory Access API (Incubator)
+  - jpackage tool (Incubator)
+
+| JDK 15
+| - Sealed Classes (Preview)
+  - Hidden Classes
+  - ZGC and Shenandoah GC become production-ready
+  - Text Blocks (Standard)
+  - Edwards-Curve Digital Signature Algorithm (EdDSA)
+
+| JDK 16
+| - Records (Standard)
+  - Pattern Matching for instanceof (Standard)
+  - Unix-Domain Socket Channels
+  - Strongly Encapsulate JDK Internals by Default
+  - Foreign Linker API (Incubator)
+
+| JDK 17 (LTS)
+| - Sealed Classes (Standard)
+  - Pattern Matching for switch (Preview)
+  - New macOS Rendering Pipeline (Metal)
+  - Strong encapsulation of internal APIs
+  - Deprecate and remove older GCs (CMS)
+  - Context-specific deserialization filters
+
+| JDK 18
+| - Simple Web Server
+  - UTF-8 by Default
+  - Code Snippets in Java API Documentation
+  - Internet-Address Resolution SPI
+
+| JDK 19
+| - Virtual Threads (Preview, Project Loom)
+  - Record Patterns (Preview)
+  - Pattern Matching for switch (2nd Preview)
+  - Foreign Function & Memory API (Preview)
+  - Structured Concurrency (Incubator)
+
+| JDK 20
+| - Scoped Values (Incubator)
+  - Record Patterns (2nd Preview)
+  - Pattern Matching for switch (3rd Preview)
+  - Foreign Function & Memory API (2nd Preview)
+  - Virtual Threads (2nd Preview)
+
+| JDK 21 (LTS)
+| - Virtual Threads (Standard)
+  - Record Patterns (Standard)
+  - Pattern Matching for switch (Standard)
+  - Sequenced Collections
+  - String Templates (Preview)
+  - Unnamed Patterns and Variables (Preview)
+  - Generational ZGC
+  - Key Encapsulation Mechanism API
+  - Deprecate and remove older/experimental features
+
+|===
+
+== New Features and Enhancements in JDK 21
+
+=== Language Features
+
+- **Pattern Matching for switch (Preview)**: Enhancements to the switch statement, allowing patterns to be used in case labels.
+- **Record Patterns (Preview)**: Deconstructing records in a more concise way.
+- **Sealed Interfaces and Classes**: More flexible sealed classes and interfaces.
+
+=== JVM Enhancements
+
+- **JVM Parameter Enhancements**: See details in the next section.
+- **Garbage Collection Improvements**: G1GC improvements, ZGC and Shenandoah GC production-ready.
+- **JVM Tuning and Monitoring**: New options and improved ergonomics for container environments.
+
+=== API Enhancements
+
+- **New macOS Rendering Pipeline**: A new rendering pipeline for macOS, based on Apple’s Metal framework.
+- **Foreign Function & Memory API (Incubator)**: A new API to interact with code and data outside of the JVM.
+- **Structured Concurrency (Incubator)**: A new concurrency model to simplify multithreading.
+- **Sequenced Collections**: Introduced in JDK 21, the `SequencedCollection`, `SequencedSet`, and `SequencedMap` interfaces provide a uniform way to work with collections that have a defined encounter order. They add methods for accessing, inserting, and removing elements at the beginning and end of collections, making it easier to write code that works with both lists and deques, as well as ordered sets and maps. This unifies and simplifies collection manipulation where order matters.
+
+=== Concurrency Enhancements
+
+- **Virtual Threads**: JDK 21 introduces virtual threads as a standard feature (Project Loom). Virtual threads are lightweight threads managed by the JVM, allowing you to create millions of concurrent threads with minimal resource overhead. They are ideal for high-throughput, concurrent applications such as servers and reactive systems. Virtual threads use the same `java.lang.Thread` API, making it easy to adopt them in existing code. They dramatically simplify writing scalable, blocking code without the complexity of asynchronous programming models.
+
+==== Details: Virtual Threads
+
+- **What are Virtual Threads?**
+  Virtual threads are threads that are scheduled by the Java runtime rather than the operating system. They are much lighter than platform (OS) threads, enabling the JVM to handle many more concurrent tasks.
+
+- **Benefits:**
+  * Enable massive concurrency (millions of threads).
+  * Reduce the need for thread pools and complex asynchronous code.
+  * Use the familiar `Thread` API and work seamlessly with existing synchronization primitives.
+  * Improve scalability for I/O-bound and high-concurrency applications.
+
+- **Usage Example:**
+  ```java
+  try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      executor.submit(() -> {
+          // Task code here
+      });
+  }
+  // Or simply:
+  Thread.startVirtualThread(() -> {
+      // Task code here
+  });
+  ```
+
+- **When to Use:**
+  * Server applications handling many simultaneous connections (e.g., HTTP servers).
+  * Applications with many blocking operations (I/O, database calls).
+  * Migrating from callback-based async code to simpler, blocking code.
+
+For more details, see:
+https://openjdk.org/jeps/444
+
+==== Details: Sequenced Collections
+
+- **What are Sequenced Collections?**
+  Sequenced collections are a new set of interfaces in the Java Collections Framework that define a consistent API for collections with a defined order (encounter order).
+
+- **Key Interfaces:**
+  * `SequencedCollection<E>`
+  * `SequencedSet<E>`
+  * `SequencedMap<K,V>`
+
+- **Key Methods:**
+  * `getFirst()`, `getLast()`
+  * `addFirst(E)`, `addLast(E)`
+  * `removeFirst()`, `removeLast()`
+  * `reversed()`
+
+- **Benefits:**
+  * Unified way to manipulate the "ends" of lists, sets, and maps.
+  * Simplifies code that needs to work with both lists and deques, or with ordered sets/maps.
+  * Makes encounter order manipulation explicit and consistent.
+
+- **Usage Example:**
+  ```java
+  SequencedCollection<String> sc = new ArrayList<>();
+  sc.addFirst("first");
+  sc.addLast("last");
+  String first = sc.getFirst();
+  String last = sc.getLast();
+  ```
+
+For more details, see:
+https://openjdk.org/jeps/431
+
+== JVM Parameter Enhancements and Differences: JDK 11 vs JDK 21
+
+This section highlights key changes, enhancements, and removals in JVM parameters (options) between JDK 11 and JDK 21.
+
+=== Removed and Deprecated JVM Options
+
+- Several options deprecated in JDK 11 have been removed in JDK 21.
+- Examples:
+  * `-XX:+UseConcMarkSweepGC` (CMS GC) is removed in JDK 21. Use G1GC or other collectors.
+  * `-XX:+UseParNewGC` is removed.
+  * `-XX:+UseAdaptiveGCBoundary` is removed.
+  * `-XX:+AggressiveOpts` is removed.
+- Deprecated options in JDK 21 are marked with warnings at startup.
+
+=== New and Enhanced JVM Options in JDK 21
+
+- **Garbage Collectors:**
+  * ZGC (`-XX:+UseZGC`) and Shenandoah (`-XX:+UseShenandoahGC`) are production-ready in JDK 21.
+  * New options for tuning ZGC and Shenandoah, e.g., `-XX:ZGenerational`, `-XX:ShenandoahGCHeuristics`.
+- **CDS (Class Data Sharing):**
+  * Enhanced with new options like `-XX:ArchiveClassesAtExit`, `-XX:SharedArchiveConfigFile`.
+- **JVM Tuning:**
+  * New options for memory and performance tuning, e.g., `-XX:SoftMaxHeapSize`.
+  * Improved ergonomics for container environments (e.g., better defaults for memory limits).
+
+==== Details: `-XX:SoftMaxHeapSize`
+
+The `-XX:SoftMaxHeapSize` option (introduced in JDK 21) allows you to specify a "soft" upper bound for the Java heap. This is different from the traditional `-Xmx` (maximum heap size), which is a hard limit.
+
+- **Purpose:**
+  `-XX:SoftMaxHeapSize` tells the JVM to try to keep the heap usage below this value under normal conditions, but it can exceed it up to `-Xmx` if necessary (e.g., under memory pressure).
+- **Why use it?**
+  * Helps reduce memory footprint and GC pause times by encouraging the JVM to collect garbage more aggressively before reaching the hard maximum.
+  * Useful in containerized/cloud environments where memory usage should be minimized.
+  * Allows for better resource sharing and elasticity in multi-tenant systems.
+    **Detail:**
+    In multi-tenant systems, multiple JVM processes or applications may share the same physical or virtual machine. By setting a lower `SoftMaxHeapSize`, each JVM instance is encouraged to use less memory under normal conditions, freeing up resources for other tenants. If a particular JVM needs more memory temporarily, it can exceed the soft limit (up to `-Xmx`), providing elasticity. This approach helps prevent any single JVM from monopolizing system memory, leading to more predictable performance and improved overall system utilization in shared environments.
+- **Example usage:**
+  `-Xmx4g -XX:SoftMaxHeapSize=2g`
+  (JVM will try to keep heap below 2GB, but can grow up to 4GB if needed.)
+
+For more details, see:
+https://openjdk.org/jeps/387
+
+- **Preview and Incubator Features:**
+  * Enable preview features with `--enable-preview`.
+  * JVM options for Project Loom (virtual threads), e.g., `-Djdk.virtualThreadScheduler.parallelism`.
+- **Logging and Diagnostics:**
+  * Unified JVM logging (`-Xlog`) is enhanced with more tags and output options.
+  * New diagnostic commands and options, e.g., `-XX:+UnlockDiagnosticVMOptions`.
+
+==== Details: `-Xlog` Unified Logging
+
+The `-Xlog` option provides a flexible and unified logging framework for JVM events. It replaces older logging flags (like `-XX:+PrintGC`) and allows fine-grained control over what is logged and where.
+
+Key features and options:
+
+- **Syntax:**
+  `-Xlog[:[what][:[output][:[decorators][:output-options]]]]`
+
+- **Log Selection (`what`):**
+  * Specify tags to select categories, e.g.:
+    - `gc` (garbage collection)
+    - `safepoint`
+    - `classload`
+    - `os`
+    - `cpu`
+    - `heap`
+    - `gc+phases`, `gc+heap`, etc. (combine tags with `+`)
+  * Example: `-Xlog:gc` logs all GC events.
+
+- **Log Level:**
+  * Levels: `off`, `trace`, `debug`, `info`, `warning`, `error`
+  * Example: `-Xlog:gc=debug`
+
+- **Output:**
+  * Default is `stdout`.
+  * Redirect to file: `-Xlog:gc:file=gc.log`
+  * Rotate files: `-Xlog:gc:file=gc.log:time,filesize=10M,files=5`
+
+- **Decorators:**
+  * Add metadata to log lines, e.g.:
+    - `time` (timestamp)
+    - `uptime`
+    - `level`
+    - `tags`
+    - `tid` (thread id)
+  * Example: `-Xlog:gc*:file=gc.log:time,uptime,level,tags`
+
+- **Multiple Configurations:**
+  * Combine multiple log configurations with commas:
+    - `-Xlog:gc=info:file=gc.log:time,safepoint=debug`
+
+- **Show Available Tags:**
+  * Use `-Xlog:help` to list all available tags and options for your JVM version.
+
+- **Examples:**
+  * Log all GC events to a file with timestamps:
+    - `-Xlog:gc*:file=gc.log:time`
+  * Log safepoint and class loading at debug level to stdout:
+    - `-Xlog:safepoint=debug,classload=debug`
+  * Log `gc`, `cpu`, `os`, and `heap` events to separate rotated logs (10 files, 10M each) with timestamps:
+    - `-Xlog:gc:file=gc.log:time,filesize=10M,files=10`
+    - `-Xlog:cpu:file=cpu.log:time,filesize=10M,files=10`
+    - `-Xlog:os:file=os.log:time,filesize=10M,files=10`
+    - `-Xlog:heap:file=heap.log:time,filesize=10M,files=10`
+
+For more details, see the official documentation:
+https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html#xlog
+
+=== Behavioral Changes
+
+- Default GC is G1GC in both, but JDK 21 has improved performance and lower latency.
+- Improved container awareness and resource detection in JDK 21.
+- Stricter validation of JVM arguments; unknown or removed options cause errors.
+
+=== Useful References
+
+- JDK 11 JVM Options: https://docs.oracle.com/en/java/javase/11/docs/specs/man/java.html
+- JDK 21 JVM Options: https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html
+- JEPs affecting JVM options: https://openjdk.org/jeps/0
+
+=== Summary Table
+
+[cols="1,1,2"]
+|===
+| Option | JDK 11 | JDK 21
+
+| `-XX:+UseConcMarkSweepGC` | Supported | Removed
+| `-XX:+UseZGC` | Experimental | Production-ready
+| `-XX:SoftMaxHeapSize` | Not available | Available
+| `-Xlog` | Unified logging | Enhanced unified logging
+| `-XX:+UnlockExperimentalVMOptions` | Required for some GCs | Fewer options require this
+| `--enable-preview` | Available | Available (for new features)
+|===
+
+== Garbage Collector Comparison: G1GC, ZGC, and Shenandoah
+
+[cols="1,1,1,1,2"]
+|===
+| Feature | G1GC | ZGC | Shenandoah | Notes
+
+| Availability
+| Default (JDK 9+) | Production (JDK 15+) | Production (JDK 17+)
+| G1GC is default; ZGC and Shenandoah must be enabled explicitly.
+
+| Pause Time Goal
+| Low-pause (tunable, ~10-200ms) | Very low-pause (<10ms, target) | Very low-pause (<10ms, target)
+| ZGC and Shenandoah are designed for ultra-low pause times.
+
+| Heap Size Support
+| Small to large heaps (few GBs to ~multi-TB) | Very large heaps (multi-TB) | Large heaps (multi-TB)
+| ZGC and Shenandoah scale better for huge heaps.
+
+| Compaction
+| Concurrent (region-based) | Concurrent | Concurrent
+| All perform concurrent compaction to minimize pauses.
+
+| Relocation/Moving Objects
+| Mostly concurrent | Fully concurrent | Fully concurrent
+| ZGC and Shenandoah move objects with minimal stop-the-world pauses.
+
+| Supported Platforms
+| All major platforms | Linux, Windows, macOS | Linux, Windows (limited macOS support)
+| ZGC and Shenandoah have more limited platform support.
+
+| Overhead
+| Moderate | Low | Low
+| ZGC and Shenandoah aim for minimal application impact.
+
+| Use Cases
+| General purpose, default for most | Large heaps, low-latency apps, cloud | Low-latency, large heaps, cloud, JVM-based services
+| Choose based on latency and heap requirements.
+
+| How to Enable
+| `-XX:+UseG1GC` (default) | `-XX:+UseZGC` | `-XX:+UseShenandoahGC`
+|
+
+|===
+
+**Summary:**
+- G1GC is the default collector, suitable for most workloads with moderate pause time requirements.
+- ZGC and Shenandoah are designed for applications needing ultra-low pause times and very large heaps, such as big data, real-time analytics, and cloud-native services.
+- ZGC and Shenandoah perform most GC work concurrently, minimizing application pauses even as heap sizes grow.
+
+

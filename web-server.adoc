@@ -1,0 +1,258 @@
+= Simple Web Server in Java 18
+:toc:
+:toclevels: 4
+
+Java 18 introduced a minimal, built-in HTTP web server for simple use cases, mainly for prototyping, testing, and local development.
+
+== What is it?
+
+The `Simple Web Server` is a command-line tool (`jwebserver`) and an API (`com.sun.net.httpserver.HttpServer`) that allows you to quickly serve static files from a directory over HTTP, without needing any external dependencies or frameworks.
+
+=== Example Usage
+
+To start a simple web server from the command line:
+
+[source,shell]
+----
+jwebserver --directory /path/to/your/files --port 8080
+----
+
+Or programmatically:
+
+[source,java]
+----
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+
+public class SimpleServer {
+    public static void main(String[] args) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        server.createContext("/", exchange -> {
+            String response = "Hello, World!";
+            exchange.sendResponseHeaders(200, response.getBytes().length);
+            exchange.getResponseBody().write(response.getBytes());
+            exchange.close();
+        });
+        server.start();
+    }
+}
+----
+
+== Benefits
+
+- **No dependencies:** Ships with the JDK, no need for external libraries.
+- **Quick setup:** Start serving files or prototyping HTTP endpoints in seconds.
+- **Great for testing:** Useful for local development, demos, and educational purposes.
+- **Lightweight:** Minimal configuration and resource usage.
+
+NOTE: This server is not intended for production use, but is ideal for development and learning scenarios.
+
+== More Advanced Usage
+
+While the Simple Web Server is designed for basic use, you can extend its functionality programmatically using the `com.sun.net.httpserver.HttpServer` API. Some advanced usage examples include:
+
+- **Custom HTTP Handlers:**
+  Implement custom logic for specific endpoints, such as returning dynamic content, processing form data, or serving files with custom headers.
+
+- **Basic Authentication:**
+  Add simple authentication to restrict access to certain endpoints or files.
+
+- **Reverse Proxy or API Gateway:**
+  Use as a lightweight reverse proxy for development, forwarding requests to other services.
+
+- **Logging and Monitoring:**
+  Integrate logging of HTTP requests or responses for debugging or monitoring purposes.
+
+- **Integration with Other Tools:**
+  Combine with build tools or scripts to serve generated documentation, test reports, or static sites during CI/CD pipelines.
+
+- **Serving Embedded Resources:**
+  Serve files from within a JAR or from memory, not just from the filesystem.
+
+NOTE: For production-grade features like HTTPS, advanced authentication, or high concurrency, consider using a full-featured web framework or server.
+
+== Proxy Concepts and API Gateway
+
+=== Reverse Proxy
+
+A **reverse proxy** is a server that sits in front of one or more web servers and forwards client (user) requests to those servers. It acts as an intermediary for requests from clients seeking resources from backend servers.
+
+Benefits:
+- Load balancing across multiple backend servers
+- SSL termination (handling HTTPS)
+- Caching static content
+- Security (hiding backend server details)
+- Centralized authentication
+
+[plantuml,reverse-proxy,svg]
+----
+@startuml
+actor Client
+rectangle "Reverse Proxy" as RP
+rectangle "Web Server 1" as WS1
+rectangle "Web Server 2" as WS2
+
+Client --> RP : HTTP Request
+RP --> WS1 : Forward to backend (e.g. load balancing)
+RP --> WS2 : Forward to backend (e.g. load balancing)
+WS1 --> RP : Response
+WS2 --> RP : Response
+RP --> Client : HTTP Response
+@enduml
+----
+
+=== Forward Proxy
+
+A **forward proxy** is a server that sits between client devices and the internet. It forwards client requests to the internet and returns the responses. Clients are configured to use the proxy.
+
+Benefits:
+- Control and monitor outbound traffic
+- Caching for improved performance
+- Access control and filtering (e.g., parental controls, firewalls)
+- Anonymity for clients
+
+[plantuml,forward-proxy,svg]
+----
+@startuml
+actor Client
+rectangle "Forward Proxy" as FP
+cloud "Internet" as Internet
+
+Client --> FP : HTTP Request
+FP --> Internet : Forward request
+Internet --> FP : Response
+FP --> Client : HTTP Response
+@enduml
+----
+
+=== API Gateway
+
+An **API Gateway** is a server that acts as a single entry point for APIs, routing requests to appropriate backend services, aggregating results, and handling cross-cutting concerns.
+
+Benefits:
+- Centralized authentication, rate limiting, and logging
+- Request routing and protocol translation
+- Aggregation of multiple backend responses
+- Simplifies client interactions with microservices
+
+[plantuml,api-gateway,svg]
+----
+@startuml
+actor Client
+rectangle "API Gateway" as AG
+rectangle "Service A" as SA
+rectangle "Service B" as SB
+
+Client --> AG : API Request
+AG --> SA : Route to Service A
+AG --> SB : Route to Service B
+SA --> AG : Response A
+SB --> AG : Response B
+AG --> Client : Aggregated Response
+@enduml
+----
+
+== Why Segregate Web Server and Application Server?
+
+Segregating the web server (e.g., Nginx, Apache) from the application server (e.g., Tomcat, Spring Boot, Node.js) provides several advantages:
+
+- **Security:** The web server can act as a shield, exposing only necessary endpoints and hiding the application server from direct internet access.
+- **Performance:** Web servers are optimized for handling static content and can offload this work from the application server.
+- **Scalability:** You can scale web and application servers independently based on load.
+- **Flexibility:** Enables use of different technologies for static and dynamic content.
+- **Centralized SSL/TLS:** Web server can handle HTTPS, simplifying certificate management.
+
+This architecture is common in production environments for robustness, maintainability, and security.
+
+== Apache HTTP Server vs Nginx
+
+Both Apache HTTP Server and Nginx are popular open-source web servers, but they have different architectures and strengths.
+
+=== Apache HTTP Server
+
+Apache is a process-driven server, highly configurable, and has been widely used since the 1990s.
+
+Pros:
+- **Mature and stable:** Long history, large community, and extensive documentation.
+- **.htaccess support:** Allows per-directory configuration, useful for shared hosting.
+- **Module ecosystem:** Rich set of modules for authentication, URL rewriting, proxying, etc.
+- **Dynamic content:** Can embed interpreters (PHP, Perl, Python) directly via modules.
+- **Flexible configuration:** Supports both global and directory-level settings.
+
+Cons:
+- **Performance:** Process/thread-based model can be less efficient under high concurrency compared to event-driven servers.
+- **Resource usage:** Higher memory footprint for many simultaneous connections.
+- **Complexity:** Configuration can be verbose and harder to manage for large deployments.
+
+Example use case:
+- Hosting dynamic websites (e.g., WordPress with PHP), legacy applications, or environments needing .htaccess overrides.
+
+Common extensions/modules:
+- `mod_rewrite` (URL rewriting)
+- `mod_proxy` (reverse proxy)
+- `mod_ssl` (SSL/TLS support)
+- `mod_security` (web application firewall)
+
+=== Nginx
+
+Nginx uses an event-driven, asynchronous architecture, making it highly efficient for serving static content and handling many concurrent connections.
+
+Pros:
+- **High performance:** Handles thousands of simultaneous connections with low resource usage.
+- **Efficient static file serving:** Excellent for serving images, videos, and other static assets.
+- **Reverse proxy/load balancer:** Widely used as a front-end proxy for application servers.
+- **Simple configuration:** Concise and easy-to-read config files.
+- **Low memory footprint:** Scales well on limited hardware.
+
+Cons:
+- **Limited dynamic content support:** Cannot run dynamic scripts natively; relies on FastCGI, uWSGI, or proxying to app servers.
+- **No .htaccess equivalent:** All configuration is centralized, which can be less flexible for shared hosting.
+- **Younger ecosystem:** Fewer modules than Apache, though core features are robust.
+
+Example use case:
+- Serving static websites, acting as a reverse proxy/load balancer for microservices, or as a gateway for Node.js, Python, or Java applications.
+
+Common extensions/modules:
+- `ngx_http_proxy_module` (reverse proxy)
+- `ngx_http_ssl_module` (SSL/TLS)
+- `ngx_http_gzip_module` (compression)
+- `ngx_http_stub_status_module` (basic status monitoring)
+
+=== Support for Server-Sent Events (SSE) and WebSockets
+
+When choosing between Apache and Nginx for real-time communication technologies like Server-Sent Events (SSE) and WebSockets, their capabilities differ:
+
+==== Server-Sent Events (SSE)
+
+- **Nginx:**
+  Nginx supports SSE well because it is event-driven and handles long-lived HTTP connections efficiently. It can proxy SSE streams from backend servers to clients with minimal configuration.
+
+- **Apache:**
+  Apache can proxy SSE, but its process/thread-based model is less efficient for handling many concurrent long-lived connections. This can lead to higher resource usage under heavy SSE loads.
+
+==== WebSockets
+
+- **Nginx:**
+  Nginx (since version 1.3) has built-in support for proxying WebSocket connections. Its event-driven architecture makes it highly suitable for handling large numbers of concurrent WebSocket connections.
+
+- **Apache:**
+  Apache supports WebSocket proxying (from version 2.4.5 with `mod_proxy_wstunnel`), but is generally less efficient than Nginx for high concurrency scenarios due to its architecture.
+
+==== Summary
+
+- For applications requiring efficient handling of SSE or WebSockets, **Nginx is generally the better choice** due to its event-driven, non-blocking architecture and native support for these protocols.
+- Apache can be used for both, but may not scale as well under heavy real-time workloads.
+
+=== Summary Table
+
+[cols="1,1,1",options="header"]
+|===
+| Feature         | Apache HTTP Server      | Nginx
+| Architecture    | Process/thread-based    | Event-driven, asynchronous
+| Static content  | Good                    | Excellent
+| Dynamic content | Built-in modules        | Via FastCGI/proxy
+| .htaccess       | Supported               | Not supported
+| Reverse proxy   | Supported               | Supported (very efficient)
+| Config style    | Verbose, flexible       | Simple, centralized
+| Memory usage    | Higher                  | Lower
+|===
