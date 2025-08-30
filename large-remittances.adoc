@@ -408,3 +408,23 @@ The time taken for an Oracle database call can vary widely depending on several 
 
 For high-throughput, low-latency systems, aim for database calls to complete in under 20 milliseconds for simple operations, and continuously monitor and optimize for consistent performance.
 
+== Using Netty within JBoss via Spring Boot
+
+Netty can be used as the underlying HTTP server for a Spring Boot application. If you want to run such an application within a JBoss environment, you typically package your Spring Boot app as a WAR file and deploy it to JBoss. However, by default, JBoss will use its own servlet container (Undertow or similar) to handle HTTP requests.
+
+To leverage Netty inside JBoss, consider the following approaches:
+
+- **Standalone Spring Boot with Netty:**
+  Run your Spring Boot application as a standalone service (using the embedded Netty server) outside of JBoss. This is the most straightforward way to use Netty, but it runs independently from the JBoss container.
+
+- **Spring Boot WAR in JBoss:**
+  If you deploy a Spring Boot WAR to JBoss, the embedded Netty server is disabled, and JBoss's servlet engine (Undertow, Tomcat, or Jetty) will handle HTTP requests. Netty will not be used as the HTTP server in this mode.
+
+- **Internal Netty Usage:**
+  You can use Netty as a client or for internal networking within your Spring Boot application (e.g., for asynchronous messaging or custom protocols), even when deployed in JBoss. However, HTTP requests from clients will still be handled by JBoss's servlet engine.
+
+- **Proxy Approach:**
+  Deploy your Netty-based Spring Boot service separately and use JBoss as an API gateway or proxy, forwarding requests to the Netty service as needed.
+
+**Summary:**
+Netty cannot directly replace the JBoss HTTP engine when deploying a WAR. For full Netty capabilities, run your Spring Boot app as a standalone service. For internal use, Netty can be leveraged for non-HTTP networking tasks within your application, regardless of the deployment model.
