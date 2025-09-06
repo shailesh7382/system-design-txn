@@ -40,3 +40,6 @@ build/
 /.idea/misc.xml
 /.idea/vcs.xml
 /.idea/workspace.xml
+/libs/
+/runlog.log
+/tensor-flow-example/libs/
