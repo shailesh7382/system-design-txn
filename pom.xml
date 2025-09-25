@@ -30,6 +30,7 @@
 
     <modules>
         <module>tensor-flow-example</module>
+        <module>liquibase-check</module>
     </modules>
 
 
