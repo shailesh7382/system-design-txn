@@ -31,6 +31,7 @@
     <modules>
         <module>tensor-flow-example</module>
         <module>liquibase-check</module>
+        <module>rest-api-doc</module>
     </modules>
 
 

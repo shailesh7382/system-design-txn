@@ -1,0 +1,6 @@
+type: object
+required: [bid, ask, timestamp]
+properties:
+  bid: { type: number }
+  ask: { type: number }
+  timestamp: { type: string, format: date-time }

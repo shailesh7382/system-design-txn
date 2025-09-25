@@ -1,0 +1,6 @@
+type: object
+properties:
+  quotes:
+    type: array
+    items:
+      $ref: './Quote.yaml'
