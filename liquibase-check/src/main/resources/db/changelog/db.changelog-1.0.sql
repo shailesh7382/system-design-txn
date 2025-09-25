@@ -30,9 +30,11 @@ CREATE TABLE person (
     name String
 ) ENGINE = MergeTree()
 ORDER BY id;
--- Insert sample data
-INSERT INTO person (id, name) VALUES (1, 'Alice');
-INSERT INTO person (id, name) VALUES (2, 'Bob');
 -- Create index (ClickHouse uses data skipping indexes)
 ALTER TABLE person ADD INDEX idx_person_name name TYPE minmax GRANULARITY 1;
 -- ClickHouse does not support unique constraints on tables.
+
+-- changeset dev:1.0-insert-person-clickhouse
+--precondition-dbms type:clickhouse
+--comment: Insert sample data for ClickHouse
+--sqlFile path:db/changelog/clickhouse/person_insert.sql relativeToChangelogFile:true
