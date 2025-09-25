@@ -16,24 +16,10 @@ CREATE INDEX idx_person_name ON person(name);
 -- Add unique constraint
 ALTER TABLE person ADD CONSTRAINT uq_person_name UNIQUE (name);
 
--- Add PL/SQL trigger to auto-fill name if null
-DECLARE
-    v_count NUMBER;
-BEGIN
-    SELECT COUNT(*) INTO v_count FROM user_triggers WHERE trigger_name = 'PERSON_NAME_DEFAULT_TRG';
-    IF v_count = 0 THEN
-        EXECUTE IMMEDIATE '
-            CREATE OR REPLACE TRIGGER person_name_default_trg
-            BEFORE INSERT ON person
-            FOR EACH ROW
-            BEGIN
-                IF :NEW.name IS NULL THEN
-                    :NEW.name := ''Unknown'';
-                END IF;
-            END;';
-    END IF;
-END;
-/
+-- changeset dev:1.0-create-person-trigger-oracle
+--precondition-dbms type:oracle
+--comment: Include PL/SQL trigger for Oracle
+--sqlFile path:db/changelog/oracle/person_name_default_trg.sql relativeToChangelogFile:true
 
 -- changeset dev:1.0-create-person-table-clickhouse
 --precondition-dbms type:clickhouse
