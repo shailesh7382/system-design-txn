@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  targetNamespace="http://example.com/bpmn">
+  <bpmn:process id="excelFlow" name="Excel Flow" isExecutable="true">
+
+    <bpmn:startEvent id="start" name="Start"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="start" targetRef="task_validate"/>
+
+    <bpmn:serviceTask id="task_validate" name="Validate Excel"
+                      camunda:class="delegate.ParseValidateDelegate"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="task_validate" targetRef="gw_hasErrors"/>
+
+    <bpmn:exclusiveGateway id="gw_hasErrors" name="Has Errors?"/>
+    <bpmn:sequenceFlow id="to_fix" sourceRef="gw_hasErrors" targetRef="task_fix">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><![CDATA[${hasErrors}]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="to_approve" sourceRef="gw_hasErrors" targetRef="task_approve">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><![CDATA[${!hasErrors}]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="task_fix" name="Fix Errors" camunda:candidateGroups="requester"/>
+    <bpmn:sequenceFlow id="f3" sourceRef="task_fix" targetRef="task_validate"/>
+
+    <bpmn:userTask id="task_approve" name="Approve" camunda:candidateGroups="approver"/>
+    <bpmn:sequenceFlow id="f4" sourceRef="task_approve" targetRef="task_publish"/>
+
+    <bpmn:serviceTask id="task_publish" name="Publish"
+                      camunda:class="com.example.camundaexcel.delegate.PublishArtifactsDelegate"/>
+    <bpmn:sequenceFlow id="f5" sourceRef="task_publish" targetRef="end"/>
+
+    <bpmn:endEvent id="end" name="End"/>
+
+  </bpmn:process>
+</bpmn:definitions>
