@@ -1,0 +1,381 @@
+= DMS Platform Architecture and Design
+:toc:
+:toclevels: 4
+:icons: font
+:sectnums:
+:experimental:
+
+== Overview
+
+This document provides a full overview of a modular, scalable, and production-grade Document Management System (DMS) comprising multiple Spring Boot–based services. The system supports the ingestion, processing, editing, versioning, workflow management, audit logging, and rendering of various document types (Excel, Word, PPT, etc.) with granular user-level traceability and secured workflows.
+
+== Key Features
+
+- Multi-user document editing with versioning and field-level preservation.
+- Templating and round-trip content mapping (Excel named ranges, Word content controls, etc.).
+- Multi-stage workflows powered by Camunda 8 Zeebe.
+- Artifact and binary storage using MinIO.
+- Microservice architecture with segregation of concerns.
+- OAuth2-based service-to-service security via Spring Boot Resource Server.
+- Maven-based multi-module project with CI/CD readiness.
+- Structured field editing with JSON representation or fallback to blob-based versioning.
+
+== Maven Project Layout
+
+[source, bash]
+----
+dms-platform/
+├─ pom.xml
+├─ common/
+├─ gateway-service/
+├─ ingestion-service/
+├─ classification-service/
+├─ document-service/
+├─ workflow-service/
+├─ render-service/
+├─ audit-service/
+└─ notification-service/
+----
+
+== Root `pom.xml`
+
+[source, xml]
+----
+<project xmlns="http://maven.apache.org/POM/4.0.0" ...>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.acme.dms</groupId>
+  <artifactId>dms-platform</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <modules>
+    <module>common</module>
+    <module>gateway-service</module>
+    <module>ingestion-service</module>
+    <module>classification-service</module>
+    <module>document-service</module>
+    <module>workflow-service</module>
+    <module>render-service</module>
+    <module>audit-service</module>
+    <module>notification-service</module>
+    <module>integration-tests</module>
+  </modules>
+
+  <properties>
+    <java.version>17</java.version>
+    <spring-boot.version>3.3.5</spring-boot.version>
+    <spring-cloud.version>2024.0.3</spring-cloud.version>
+    <camunda.version>8.6.5</camunda.version>
+    <poi.version>5.3.0</poi.version>
+    <tika.version>2.9.2</tika.version>
+    <postgres.version>42.7.4</postgres.version>
+    <flyway.version>10.18.1</flyway.version>
+    <minio.version>8.5.11</minio.version>
+    <kafka.version>3.8.0</kafka.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type><scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type><scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+          <configuration>
+            <release>${java.version}</release>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>${spring-boot.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
+----
+
+== Common Module
+
+Defines shared DTOs, enums, and event definitions.
+
+[source, xml]
+----
+<project ...>
+  <parent>
+    <groupId>com.acme.dms</groupId><artifactId>dms-platform</artifactId><version>1.0.0</version>
+  </parent>
+  <artifactId>common</artifactId>
+  <dependencies>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-json</artifactId></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+  </dependencies>
+</project>
+----
+
+=== Example DTO
+
+[source, java]
+----
+public record DocumentDTO(
+  String documentId,
+  String title,
+  String docType,
+  Integer currentVersion,
+  Map<String,Object> fields
+) {}
+----
+
+=== Example Event
+
+[source, java]
+----
+public record DocumentUploaded(
+  String documentId, String filename, String contentType, long size,
+  String blobKey, String uploadedBy, Instant ts) {}
+----
+
+== Gateway Service
+
+Acts as API entry point, routes requests to internal services.
+
+[source, yaml]
+----
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: document
+          uri: http://document-service:8080
+          predicates: [ Path=/api/documents/** ]
+        - id: workflow
+          uri: http://workflow-service:8080
+          predicates: [ Path=/api/workflows/**, /api/tasks/** ]
+        - id: ingestion
+          uri: http://ingestion-service:8080
+          predicates: [ Path=/api/ingest/** ]
+----
+
+== Document Service
+
+Handles:
+
+- Document metadata CRUD
+- Versioning
+- MinIO storage
+- Field-level data (JSON-based)
+
+=== Entity Definitions
+
+[source, java]
+----
+@Entity @Table(name="document")
+public class DocumentEntity {
+  @Id private UUID id;
+  private String title;
+  private String docType;
+  private String ownerId;
+  private OffsetDateTime createdAt = OffsetDateTime.now();
+  private Integer currentVersion = 1;
+  private String state = "DRAFT";
+}
+----
+
+=== Excel Read/Write Helper
+
+[source, java]
+----
+public class ExcelRoundTrip {
+  public Map<String, Object> extract(InputStream xlsx) throws Exception {
+    ...
+  }
+  public byte[] compose(byte[] templateBytes, Map<String,Object> fields) throws Exception {
+    ...
+  }
+}
+----
+
+== Ingestion Service
+
+Handles upload preprocessing, content detection, event emission.
+
+== Classification Service
+
+Acts as a Zeebe Job Worker (`classifyDocument`) to determine:
+
+- Document type
+- Workflow template
+- Priority
+
+== Workflow Service
+
+Deploys and orchestrates BPMN flows using Camunda 8 Zeebe.
+
+=== Example BPMN
+
+[source, xml]
+----
+<bpmn:process id="GenericDocFlow" isExecutable="true">
+  <bpmn:startEvent id="Start" name="On Upload"/>
+  <bpmn:serviceTask id="Extract" name="Extract Fields" camunda:type="external" camunda:topic="extractFields"/>
+  <bpmn:serviceTask id="Classify" name="Classify" camunda:type="external" camunda:topic="classifyDocument"/>
+  <bpmn:userTask id="DraftEntry" name="Draft Data Entry"/>
+  <bpmn:userTask id="Review" name="Review & Approve"/>
+  <bpmn:serviceTask id="Render" name="Render Final" camunda:type="external" camunda:topic="renderFinal"/>
+  <bpmn:endEvent id="End" name="Archived"/>
+</bpmn:process>
+----
+
+== Render Service
+
+Generates final documents from versioned binary or field JSON.
+
+[source, java]
+----
+public class RenderWorker {
+  @JobWorker(type = "renderFinal")
+  public Map<String,Object> render(ActivatedJob job) throws Exception {
+    ...
+  }
+}
+----
+
+== Document Storage on Linux (Bare‑Metal)
+
+This section documents practical, production-ready recommendations for storing document binaries and object data on Linux servers running on bare metal (no cloud object store). It covers filesystem choices, directory layout, permissions, atomic write patterns, MinIO placement, backups, monitoring and DR.
+
+=== Goals and constraints
+- Durability: survive reboots, power loss, disk failure (when possible with RAID).
+- Consistency: avoid partial/ corrupt blobs visible to services.
+- Performance: predictable throughput and IOPS for typical document sizes (KBs → tens of MBs).
+- Security: least-privilege file access, encryption at rest where required.
+- Operational simplicity: clear layout, quick backup/restore, monitoring.
+
+=== Filesystem & disk recommendations
+- Prefer XFS for large capacity and parallel IO; ext4 is acceptable and simple. Avoid filesystems with known small-file performance problems.
+- Use hardware RAID or software RAID (mdadm) with hot spares. For high performance, use NVMe for metadata/journal or whole pool.
+- Mount options (example for XFS/ext4):
+  * noatime,nodiratime — reduces metadata writes.
+  * For ext4: data=ordered (default) is a reasonable balance.
+  * Tune journaling and commit interval only after load testing; don't disable journaling without understanding failure modes.
+- Example fstab entry:
+  * UUID=... /data/dms xfs defaults,noatime,nodiratime,attr2,inode64 0 2
+
+=== Directory layout and naming
+- Keep a dedicated mount point such as /data/dms or /var/lib/dms.
+- Suggested layout:
+  * /data/dms/minio/data/... (if using MinIO locally)
+  * /data/dms/blobs/<bucket>/<yyyy>/<mm>/<documentId>/<version>.bin
+  * /data/dms/meta/db-relations -> small files linking to DB entries (optional)
+- Store only blobs on the filesystem; always keep metadata (indexes, search, ownership, audit) in the RDBMS (Postgres).
+
+=== Permissions, users and ACLs
+- Run the document service and MinIO as dedicated Unix users (e.g., dmssvc, minio).
+- Setup ownership and restrictive permissions:
+  * chown -R minio:minio /data/dms/minio
+  * chmod -R 750 /data/dms
+- Use POSIX ACLs if multiple users/processes need finer-grained access:
+  * setfacl -R -m u:dmssvc:rwx /data/dms/minio
+- Enforce umask in service unit files (eg, systemd) so files are created with secure permissions.
+
+=== Atomic writes and consistency patterns
+- Never write the final blob directly to the visible path. Use write-then-rename pattern:
+  1. create temporary file in same filesystem (e.g., /data/dms/tmp/<uuid>.part)
+  2. write fully and fsync the temp file (FileDescriptor.sync or FileChannel.force)
+  3. rename (atomic on same filesystem) to final path
+  4. (Optionally) fsync the parent directory to ensure directory entry persisted
+- This avoids partial files being served and is more portable than relying on O_SYNC globally.
+
+=== MinIO on bare metal (if used as object layer)
+- MinIO works well on bare metal; back its data directory with reliable disks and the filesystem tips above.
+- Run MinIO as a dedicated service user and set the MINIO_VOLUMES to /data/dms/minio/data
+- Example systemd snippet (in service unit set User= and Group= and PrivateTmp=no if you need shared tmp):
+  - Ensure ExecStart runs with proper env MINIO_ROOT_USER and MINIO_ROOT_PASSWORD and data dir permissions.
+- For distributed MinIO (multi-node), prefer separate disks per drive and network VLAN for traffic; for single-node MinIO, ensure local backup/snapshot schedule.
+
+=== Backup, snapshot and retention
+* Strategy:
+  - Daily incremental backups, weekly full backups.
+  - Keep object metadata in DB backups as source-of-truth.
+* Methods:
+  - Filesystem snapshot (LVM snapshot or ZFS snapshot) + stream to backup server (rsync, borg, restic).
+  - For MinIO: use mc (MinIO client) to mirror to another MinIO or S3-compatible endpoint: mc mirror --remove.
+* Example rsync cron (incremental):
+  - rsync -aH --delete /data/dms/ backup.example:/backups/dms/2025-11-01/
+* Retention: apply retention policy at two tiers (hot recent, cold long-term).
+
+=== Disaster recovery and restore
+- Validate restores regularly: perform scheduled restore drills to a staging host and verify file counts & hashes against DB.
+- Maintain a replicated metadata DB or enable logical replication for quick failover.
+
+=== Monitoring and health checks
+* Monitor:
+  - Disk free, inode usage (df -h, df -i)
+  - IO wait and throughput (iostat, iotop, node_exporter metrics)
+  - Latency for open/read/write operations
+  - MinIO health endpoints and disk healing status if distributed
+* Add application-level sanity checks:
+  - Background job validating blob presence for active documents (compare DB blobKey → filesystem path/object).
+  - Periodic checksum verification (store and compare SHA256 for each blob).
+* Export metrics via Prometheus node_exporter and process exporter; track disk utilization, read/write latency and service-level success rates.
+
+=== Performance and capacity planning
+- Measure average doc size and peak ingest rate; size storage with headroom for growth and IO spikes.
+- Use faster disks for metadata-heavy operations (small files) and parallel disks for large throughput.
+- Consider caching layer (local NVMe) for hot objects; purge policy based on LRU.
+
+=== Database ↔ Filesystem integration patterns
+- Two common approaches to store blob references:
+. DB stores blobKey (bucket/path) and service retrieves binary by reading filesystem or object store; transactional steps:
+     - Insert metadata row with state=UPLOADING
+     - Write blob to tmp→rename
+     - Update metadata row with blobKey,state=AVAILABLE (commit)
+. DB stores only pointer & checksum; a background job reconciles.
+- Ensure operations are idempotent and implement optimistic retries—writes must be safe if attempted multiple times.
+
+=== Example: safe upload sequence (pseudo-steps)
+1. Client uploads to ingestion service (multipart upload or streaming).
+2. Service writes to /data/dms/tmp/<uuid>.part and computes checksum while writing.
+3. fsync temp file; rename to /data/dms/blobs/<bucket>/<id>/<v>.bin
+4. Insert or update metadata in DB with checksum and final path in a single transaction (or mark available after DB write).
+5. Emit DocumentUploaded event with blobKey (file://... or s3://... for MinIO).
+
+=== Example minimal systemd mount + permissions snippet
+- /etc/fstab:
+  - UUID=<disk-uuid> /data/dms xfs defaults,noatime,nodiratime 0 2
+- systemd service (excerpt):
+  - [Service]
+    User=minio
+    Group=minio
+    ExecStart=/usr/local/bin/minio server /data/dms/minio/data
+    UMask=007
+    PrivateTmp=false
+
+=== Operational checklist (pre-deploy)
+- Verify mount options, and ensure temp and final files are on same filesystem.
+- Create and test upload rename/fsync flow.
+- Configure backups and DR runbook.
+- Add monitoring and alerting for disk fullness, inode exhaustion, IO saturation, and MinIO errors.
+- Run load tests to validate throughput and concurrency behavior.
+
+=== References and tooling
+- Tools: iostat, dd, fio, rsync, borg/restic, node_exporter, Prometheus, Grafana, mc (MinIO client)
+- Test for partial writes with simulated crashes and validate no partially-available files.

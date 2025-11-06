@@ -1,0 +1,306 @@
+= Resource Costing Workflow (Excel → Add Resources → Approve → Publish)
+:toc: macro
+:toclevels: 3
+:icons: font
+:revdate: 2025-11-06
+:project: Resource Costing
+:stack: Spring Boot + Camunda 8 + PostgreSQL + Apache POI + S3/Azure Blob
+:security: OIDC (Keycloak/Entra ID)
+:owner: Shailesh Singh
+
+toc::[]
+
+== 1. Purpose
+Implement a workflow where an Excel template is uploaded, parsed into structured resources, validated, routed for approvals, and finally *published* (immutable, auditable snapshot). The system must preserve full change history (who/when/what), support re-submission cycles, and produce a finalized downloadable Excel/CSV and JSON.
+
+== 2. Roles & Permissions
+[options="header",cols="2,5"]
+|===
+|Role |Capabilities
+|Requester (RM/PM) |Upload Excel, fix validation errors, resubmit, view status
+|Costing Analyst |Enrich fields (cost center, FX rate, caps), run validations
+|Approver L1 (Delivery) |Approve/Reject with comments, request changes
+|Approver L2 (Finance) |Approve/Reject with budget checks, request changes
+|Publisher (Ops) |Publish & lock; trigger downstream exports
+|Auditor (Read-only) |Full read-only with history and diffs
+|Admin |Manage templates, thresholds, users, and reference data
+|===
+
+== 3. Excel Template (Authoritative Input)
+*File name pattern:* `resource_costing_{projectCode}_{yyyymmdd}.xlsx`
+
+=== 3.1 Sheet: `Resources`
+[options="header",cols="2,1,1,1,2,2,2"]
+|===
+|Column |Type |Required |Example |Rules |Notes |Maps To
+|ProjectCode |String |Y |PRJ-ACME |= project must exist |FK |resources.project_code
+|ResourceName |String |Y |John Doe |len ≤ 80 | |resources.name
+|Role |Enum |Y |Senior Dev |present in ref list |ref.roles |resources.role
+|Location |Enum |Y |SG |in ref.locations |geo |resources.location
+|RateCurrency |Enum |Y |SGD |ISO 4217 |fx |resources.rate_ccy
+|Rate |Number |Y |1200 |>0, 2dp |daily |resources.rate
+|StartDate |Date |Y |2025-01-01 |ISO yyyy-mm-dd | |resources.start_date
+|EndDate |Date |Y |2025-06-30 |>= StartDate | |resources.end_date
+|EffortDays |Number |N |120 |>=0 |computed if absent |resources.effort_days
+|CostCenter |String |N |CC-1234 |validate if present |ref.cc |resources.cost_center
+|===
+
+=== 3.2 Sheet: `Meta`
+- `TemplateVersion` (e.g., `v3`)
+- `UploaderEmail`
+- `FxAsOf` (valuation date for FX)
+
+== 4. High-Level Process (BPMN)
+Use Camunda Modeler to implement the following BPMN (indicative):
+
+[plantuml,format=svg]
+----
+@startuml
+!pragma teoz true
+' BPMN-like sequence (logical sketch)
+participant Requester
+participant "Workflow Engine" as Engine
+participant Analyst
+participant "Approver L1" as A1
+participant "Approver L2" as A2
+participant Publisher
+
+Requester -> Engine: Upload Excel (start)
+Engine -> Engine: Parse + Validate (Service Task)
+Engine -> Requester: User Task: Fix Errors? (gateway)
+Requester -> Engine: Resubmit (loop if errors)
+Engine -> Analyst: User Task: Enrich / Normalize
+Analyst -> Engine: Complete Task
+Engine -> A1: User Task: Approve L1
+A1 -> Engine: Approve? (gateway)
+Engine -> A2: User Task: Approve L2 (if A1=Approved)
+A2 -> Engine: Approve? (gateway)
+Engine -> Publisher: User Task: Publish & Lock
+Publisher -> Engine: Complete
+Engine -> Requester: Notify Published (end)
+@enduml
+----
+
+== 5. Decision Logic (DMN)
+=== 5.1 Validation Rules (sample)
+[options="header",cols="3,3,5,3"]
+|===
+|Rule |Condition |Check |Severity
+|R1  |Rate ≤ 0 |Invalid rate |ERROR
+|R2  |Role ∉ RolesRef |Unknown role |ERROR
+|R3  |Location ∉ LocationsRef |Unsupported location |ERROR
+|R4  |EndDate < StartDate |Bad dates |ERROR
+|R5  |RateCurrency ∉ ISO4217 |Bad currency |ERROR
+|R6  |Fx asOf older than 5d |Stale fx warning |WARN
+|R7  |Cost ≥ ProjectCap |Needs L2 finance |INFO→Route
+|===
+
+=== 5.2 Routing (DMN Table)
+[options="header",cols="3,3,3,3,3"]
+|===
+|TotalCost (SGD) |Needs L1 |Needs L2 |Parallel? |Outcome
+|< 50k |true |false |false |L1 only
+|50k..250k |true |true |false |L1 then L2
+|> 250k |true |true |true |L1 & L2 parallel
+|===
+
+== 6. Data Model (Relational)
+[plantuml, format=svg]
+----
+@startuml
+entity SUBMISSION {
+  id PK
+  project_code
+  status (DRAFT, IN_VALIDATION, NEEDS_FIX, ANALYST_ENRICH, A1, A2, PUBLISH, PUBLISHED)
+  template_version
+  fx_as_of
+  created_by
+  created_at
+}
+entity RESOURCE {
+  id PK
+  submission_id FK
+  name
+  role
+  location
+  rate_ccy
+  rate
+  start_date
+  end_date
+  effort_days
+  cost_center
+  cost_sgd
+}
+entity HISTORY {
+  id PK
+  submission_id FK
+  actor
+  action
+  comment
+  at
+  diff_json
+}
+SUBMISSION ||--o{ RESOURCE
+SUBMISSION ||--o{ HISTORY
+@enduml
+----
+
+== 7. API Contract (REST)
+=== 7.1 Upload
+`POST /api/submissions` +
+Multipart: `file` (xlsx), `projectCode` +
+Return: `{submissionId, status}`
+
+=== 7.2 Validation Results
+`GET /api/submissions/{id}/issues` → list of `{row, column, code, message, severity}`
+
+=== 7.3 Enrichment
+`PUT /api/submissions/{id}/analyst` → JSON patch of normalized fields (bulk or per-row)
+
+=== 7.4 Approvals
+`POST /api/submissions/{id}/approve` body:`{level:"L1"|"L2", decision:"APPROVE"|"REJECT", comment}`
+
+=== 7.5 Publish
+`POST /api/submissions/{id}/publish` → locks records, emits artifacts:
+- `xlsx_url`, `csv_url`, `json_url`, `signature`, `version`
+
+== 8. Implementation Notes
+
+=== 8.1 Excel Parsing
+- Library: Apache POI
+- Validate headers strictly; flexible row count
+- Compute `effort_days` if missing: `NETWORKDAYS(start,end,holidays)` (server-side calendar)
+
+[source,java]
+----
+try (var is = file.getInputStream(); var workbook = WorkbookFactory.create(is)) {
+  var sheet = workbook.getSheet("Resources");
+  for (Row r : sheet) {
+    if (r.getRowNum()==0) continue; // header
+    var rate = r.getCell(5).getNumericCellValue();
+    if (rate <= 0) issues.add(err(r,5,"R1","Invalid rate"));
+    // map → Resource entity...
+  }
+}
+----
+
+=== 8.2 Cost Calculation & FX
+- Store raw currency + rate
+- Normalize to SGD via `fx(rate_ccy → SGD, fx_as_of)`
+- Cache FX via daily table; warn if `fx_as_of` older than 5 days
+
+=== 8.3 Camunda (BPMN/DMN)
+- BPMN: Service Task `ParseValidateDelegate`, User Tasks for *Fix*, *Enrich*, *Approve L1/L2*, *Publish*.
+- DMN tables: *Validation aggregation* and *Routing*.
+- Use process variables: `submissionId`, `totalCostSgd`, `needsL2`, `parallelApproval`.
+
+=== 8.4 Persistence
+- PostgreSQL with JSONB `diff_json` in `HISTORY`
+- Soft-delete never; all versions immutable post-publish
+
+=== 8.5 Audit & Diff
+- Record before/after snapshots per human task completion
+- Include Excel SHA-256 of uploaded file in `HISTORY`
+
+=== 8.6 Notifications
+- Email/Teams/Slack on: *Needs Fix*, *Assigned Task*, *Rejected*, *Published*
+- Templates include deep-links to Tasklist UI
+
+=== 8.7 UI Hints
+- Upload → Validation grid with row/column annotations
+- “Quick-Fix” actions (e.g., mass currency change)
+- Approval screen shows totals, variances vs last published
+- Publish screen shows final artifacts and signature
+
+== 9. Security
+- OIDC login; roles mapped from groups
+- Row-level checks: only project members can view/edit draft
+- Signed publish artifact with detached signature (PGP or JWS)
+
+== 10. Error Handling
+[options="header",cols="2,5,3"]
+|===
+|Case |Behavior |Code
+|Bad template |Return issues; status → NEEDS_FIX |400
+|Validation errors |Aggregate; do not advance |200 (with issues)
+|Approval rejection |Status → NEEDS_FIX with comment |200
+|Publish conflict |If changes after approval, require re-approval |409
+|===
+
+== 11. SLAs & Metrics
+- Parsing < 15s for ≤10k rows
+- End-to-end (no rework) < 2 business days
+- Metrics: counts by status, age in-status, reject reasons, top errors
+
+== 12. Deployment
+- Spring Boot service, stateless pods, HPA
+- Object store for original and published files
+- DB migrations via Flyway
+- Camunda: External Task workers or embedded engine (Camunda 7); Zeebe workers (Camunda 8)
+
+== 13. Testing
+- Unit: POI mappers, validators, FX converter
+- BPMN: Camunda scenario tests with mock users
+- E2E: Upload→Publish happy path + rejection loops
+- Golden files: expected CSV/JSON for fixtures
+
+== 14. Sample Acceptance Criteria
+- Given a valid Excel, when uploaded, then status=IN_VALIDATION and 0 *ERROR* issues.
+- Given rate=0, then *ERROR R1* recorded and status=NEEDS_FIX.
+- Given totalCost>250k, then L1/L2 tasks created in parallel.
+- Given L2 rejection, then status returns to NEEDS_FIX with comment preserved.
+- Given Publish, then artifacts written, signature stored, submission becomes read-only.
+
+== 15. Reference: Minimal Spring Boot Stubs
+
+=== 15.1 Controller
+[source,java]
+----
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/submissions")
+class SubmissionController {
+  private final SubmissionService svc;
+
+  @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  SubmissionId upload(@RequestPart MultipartFile file,
+                      @RequestParam String projectCode) { return svc.upload(file, projectCode); }
+
+  @GetMapping("/{id}/issues")
+  List<Issue> issues(@PathVariable long id){ return svc.issues(id); }
+
+  @PostMapping("/{id}/approve")
+  void approve(@PathVariable long id, @RequestBody ApprovalDto dto){ svc.approve(id,dto); }
+
+  @PostMapping("/{id}/publish")
+  PublishResult publish(@PathVariable long id){ return svc.publish(id); }
+}
+----
+
+=== 15.2 Camunda Delegates (example)
+[source,java]
+----
+@Component("parseValidate")
+@RequiredArgsConstructor
+class ParseValidateDelegate implements JavaDelegate {
+  private final ValidationService validation;
+  public void execute(DelegateExecution ctx) {
+    var sid = (Long) ctx.getVariable("submissionId");
+    var result = validation.validate(sid);
+    ctx.setVariable("hasErrors", !result.errors().isEmpty());
+    ctx.setVariable("totalCostSgd", result.totalCostSgd());
+  }
+}
+----
+
+== 16. Publish Artifacts
+- `/{projectCode}/{submissionId}/published/resource_costing_{version}.xlsx`
+- `.../resource_costing_{version}.csv`
+- `.../resource_costing_{version}.json`
+- `.../resource_costing_{version}.sig` (detached signature)
+
+== 17. Future Enhancements
+- Multi-currency publish packs
+- Scenario simulation (rate/FX shocks)
+- API to push to ERP (SAP/Oracle) via async connector
+- Row-level “justification” attachments
