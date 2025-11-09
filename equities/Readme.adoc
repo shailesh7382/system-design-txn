@@ -7,10 +7,12 @@
 :revremark: Initial draft
 :owner: Shailesh Singh
 
+
 == Overview
 
 - Market data integration using Bloomberg BLPAPI.
 - Order execution / EMSX integration for order management.
+- FIX protocol support for venue and counterparty connectivity (e.g., QuickFIX/J or vendor FIX gateways) — optional adapter for firms requiring FIX-based order entry and market connectivity.
 - An instrument master that maintains tickers from configured major exchanges.
 - A retail-focused UI for Private Banking (PB) customers:  capabilities include
 . trade capture
