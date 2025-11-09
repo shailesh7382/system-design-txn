@@ -1,0 +1,242 @@
+= Equities Trading System — Design Notes
+:toc:
+:toclevels: 3
+:icons: font
+:revdate: 2025-11-06
+:revnumber: 0.1
+:revremark: Initial draft
+:owner: Shailesh Singh
+
+== Overview
+
+- Market data integration using Bloomberg BLPAPI.
+- Order execution / EMSX integration for order management.
+- An instrument master that maintains tickers from configured major exchanges.
+- A retail-focused UI for Private Banking (PB) customers:  capabilities include
+. trade capture
+. consolidated positions
+. recent trades and execution status
+. ticker watchlists and notifications
+. instrument lookup and basic analytics
+. ticker news, corporate actions
+. downloadable statements and reports.
+- support RM assisted trading for PB clients.
+
+== PB Customer Features
+
+=== Key capabilities
+- Consolidated positions dashboard:
+  - Current holdings with market value, day P&L etc.
+  - Filter by portfolio, asset-class, and date range.
+- Recent activity & trade status:
+  - List of submitted trades, statuses (submitted, executed, partially filled), execution price, and timestamps.
+  - Drill-down to trade details and audit trail (who submitted, approvals, external/exchange IDs).
+- Statements & reports:
+  - Generate/download period statements and trade blotters.
+  - Scheduled or on-demand exports for PB clients.
+- Notifications & alerts:
+  - In-app notifications and optional email alerts for fills, rejections, margin calls, or large movements.
+- Instrument lookup:
+  - Simplified instrument search (name, ticker) with exchange filter and minimal reference data (ticker, exchange, basic description).
+- Audit: Detailed audit trail for views and actions (who viewed/changed what, when).
+- Consent & disclosures: Present necessary legal disclaimers before trade-related actions.
+- Accessibility for relationship managers via internal UI.
+
+=== Integration points
+
+- Real-time updates: subscribe over WebSocket/STOMP for fills/updates relevant to PB accounts only.
+- Reporting/export: background job that pulls data from trade store and instrument master; deliver via secure link or SFTP.
+- Interactions with Instrument Master: use normalized tickers and exchange context to ensure consistent display and reconcile mismatches offline.
+
+=== Operational notes
+- Rate limits and throttling to protect backend services when serving many retail users.
+- Caching layer for instrument lookups and non-sensitive position snapshots to reduce latency.
+- Monitoring: separate health/metrics for PB UI API endpoints and notification delivery.
+- Privacy: ensure data segregation so PB customers cannot access other clients' details.
+
+== High-level architecture
+- Backend (Java, Spring Boot)
+  - Market Data Adapter (BLPAPI) — subscription + snapshots
+  - EMSX / Order Adapter — outbound orders, fills, status
+  - Trade Capture Service — REST only (WebSocket for UI)
+  - Instrument Master Service — canonical instruments, tickers, mappings
+  - Persistence + time-series store for tick history (optional)
+- Frontend (React.js)
+  - Instrument Browser / Lookup
+  - PB Customer UI — positions, trade status
+
+== Backend: Java implementation notes
+- Framework: Spring Boot (REST controllers, WebSocket STOMP), Spring Data JPA
+- Concurrency: non-blocking adapters where possible, executor pools for adapters
+
+=== BLPAPI integration (Market Data)
+- Use Bloomberg BLPAPI Java SDK (blpapi). Typical patterns and operational guidance:
+  - Services & session:
+    - Resolve services you need (e.g., market data, reference data) — common service URIs: //blp/mktdata and //blp/refdata.
+    - Create and manage a Session; use an Identity where the environment requires entitlement/authentication.
+    - Ensure proper lifecycle: start session, open services, subscribe, then on shutdown unsubscribe/stop.
+  - Request vs Subscription:
+    - ReferenceDataRequest (one-off): request instrument attributes (ISIN, CUSIP, primary exchange, description).
+    - Subscriptions: real-time fields (PX_LAST, PX_BID, PX_ASK, VOLUME, TRADE_TIME) via SubscriptionList.
+    - Consider snapshot requests for end-of-day or recovery flows.
+  - Data handling patterns:
+    - Use an event loop to process Event types (SESSION_STATUS, SUBSCRIPTION_DATA, RESPONSE, PARTIAL_RESPONSE).
+    - Normalize incoming tickers (exchange suffixes, currency, primary exchange) before persisting or publishing.
+    - Enrich instrument master with reference data responses; publish normalized ticks to internal Kafka topics for consumers.
+  - Performance & reliability:
+    - Batch reference-data requests to reduce round-trips.
+    - Implement reconnect/backoff and session health checks; detect service outages and signal degraded mode.
+    - Use dedicated thread pools for I/O vs processing; avoid blocking the blpapi event thread.
+    - Throttle subscription churn and manage subscription limits; keep a registration cache for active subscriptions.
+  - Error handling & idempotency:
+    - Handle PARTIAL_RESPONSE and errors in RESPONSE events explicitly; log and retry with exponential backoff.
+    - Persist important updates (e.g., reference-data enrichment) before acknowledging upstream consumers.
+  - Testing & sandbox:
+    - Record and replay message flows for unit/integration tests; use vendor sandbox accounts if available.
+  - Example config (conceptual):
+[source,yaml]
+----
+bloomberg:
+  host: 10.0.0.1
+  port: 8194
+  services:
+    marketData: //blp/mktdata
+    refData: //blp/refdata
+  fields: [PX_LAST, PX_BID, PX_ASK, VOLUME]
+----
+  - Security: protect API credentials, use network controls, and apply entitlements/identity management as required by vendor.
+
+=== EMSX / Order Execution integration
+- Overview & patterns:
+  - EMSX exposes order entry and execution messages (typically via a blpapi service for EMSX or a vendor-specific API). Integrate with an async request/response model: send order request, receive async execution reports and status updates.
+  - Maintain a persistent mapping between internal orderId / clientOrderId and EMSX order identifiers to correlate acknowledgements, fills, and cancels.
+- Common request flows:
+  - NewOrder: map internal model -> EMSX request fields (ticker, side, quantity, account, order type, limit/stop price, time-in-force, clientOrderId).
+  - AmendOrder: submit change requests referencing EMSX order id or clientOrderId; reconcile partial fills before amend.
+  - CancelOrder: submit cancel and watch for CancelAck/Reject events.
+  - Allocation / Post-Trade: push allocation instructions after fills; track allocation status and ack.
+- Key fields & semantics (examples to map to internal model):
+  - EMSX_TICKER / symbol, EMSX_AMOUNT / quantity, EMSX_ORDER_TYPE, EMSX_LIMIT_PRICE, EMSX_STOP_PRICE, EMSX_SIDE, EMSX_ACCOUNT, EMSX_CLIENT_ORDER_ID, EMSX_ORIG_ORDER_ID
+  - Execution reports will include executionId, fill size, fill price, cumulative executed qty, remaining qty, status (NEW, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED).
+- Reliability & idempotency:
+  - Use idempotency keys (clientOrderId) for safely retrying submission flows.
+  - Persist outbound order requests in a durable store until you receive a confirmed terminal state from EMSX.
+  - Implement timeouts and reconciliation jobs: if no ack within expected window, query EMSX order status and reconcile.
+- Concurrency & correlation:
+  - Correlate EMSX async messages via unique correlation ids; decouple sending thread from processing thread via internal queues/Kafka.
+  - Maintain an in-memory cache of pending orders for quick lookups and a persisted source-of-truth for recovery.
+- Error handling & rejects:
+  - Map vendor reject codes to internal reject reasons; surface clear messages to UI (PB/Trader) with actionable next steps.
+  - On AMEND/CANCEL rejects, surface recovery actions and log for manual intervention.
+- Security, permissions & routing:
+  - Ensure credentials and entitlements are provisioned per-trader/account; enforce order-level permission checks before sending.
+  - Support venue routing fields if EMSX supports multi-venue execution routing.
+- Testing & staging:
+  - Use EMSX sandbox/test environment and regression fixtures. Capture message logs for replayable test cases.
+- Operational notes:
+  - Monitor submission/ack latencies and error rates; instrument metrics per-client and per-venue.
+  - Implement auditing for all order lifecycle events to meet compliance.
+- Example conceptual mapping (internal -> EMSX):
+[source,ini]
+----
+internalOrder = {
+  id: uuid,
+  account: "ACC123",
+  symbol: "AAPL US Equity",
+  side: BUY,
+  qty: 100,
+  type: LIMIT,
+  price: 180.25
+}
+emsxRequest = {
+  EMSX_CLIENT_ORDER_ID: internalOrder.id,
+  EMSX_ACCOUNT: internalOrder.account,
+  EMSX_TICKER: internalOrder.symbol,
+  EMSX_SIDE: internalOrder.side,
+  EMSX_AMOUNT: internalOrder.qty,
+  EMSX_LIMIT_PRICE: internalOrder.price
+}
+----
+  - After send: persist correlation (internalOrder.id <-> EMSX assigned id) and watch execution reports to update trade capture store.
+
+== Instrument Master (design)
+- Purpose: canonical list of instruments + tickers per configured exchanges
+- Core model (minimal):
+  - instrument(id, isin, cusip, symbol, primary_exchange, description, asset_class)
+  - instrument_ticker(id, instrument_id, exchange_code, exchange_ticker, local_symbol, active, last_seen)
+  - ticker_source(id, name, type, config) — e.g., BLANK, BLOOMBERG, EXCHANGE_FEED
+- Exchange configuration:
+  - Configurable list of exchanges (MIC codes, country, hours)
+  - Mapping rules for exchange-specific suffixes and symbol normalization
+- Ingestion & sync:
+  - Batch imports from exchange reference files and vendor (Bloomberg referenceData)
+  - Streaming updates from market data feed for addition/deprecation
+  - Reconciliation job: detect duplicates, missing ISINs, changed tickers
+- Match heuristics:
+
+
+== React.js Trade Capture UI
+- Tech stack: React + TypeScript, React Router, Zustand/Redux for state, Material-UI or Ant Design
+- Key screens:
+  - Trade Capture form: instrument picker, side, qty, price, venue, trader notes
+  - Instrument Browser / Lookup with exchange filter
+  - Trade detail / audit view
+  - PB Positions / Allocations view
+- UX patterns:
+  - Instrument autocomplete uses backend /api/instruments
+  - Client-side validation + server-side validation error display
+  - Optimistic UI for quick feedback, rollbacks on server error
+- Real-time:
+  - Subscribe to trade updates via WebSocket/STOMP
+  - Use delta updates to update lists and notify users of fills
+- Build & deployment:
+  - Build artifact deployed on CDN or served via backend UI service
+  - Use environment variables for API base URL and WS URL
+
+== Dependencies & tools
+- Java: OpenJDK 21, Spring Boot, Spring Data JPA
+- Bloomberg: blpapi Java SDK (vendor-managed)
+- EMSX: EMSX adapter/library (per vendor docs)
+- Frontend: React, TypeScript, WebSocket or STOMP client library
+- DB: PostgreSQL (or other RDBMS)
+
+
+== Next steps / Implementation roadmap
+1. Implement Instrument Master service + import pipelines (low-risk, enables other work).
+2. Implement Market Data Adapter (BLPAPI) for reference-data and subscriptions.
+3. Implement EMSX adapter and basic order flow (sandbox first).
+4. Build Trade Capture REST APIs and wire persistence + validation.
+5. Implement React trade capture UI and integrate WebSocket updates.
+
+== Resources & URLs
+
+A compact list of key documentation and reference URLs used when implementing integrations and UI.
+
+[cols="1,2,3",options="header"]
+|===
+| Resource | Description | URL
+
+| Bloomberg BLPAPI
+| Official BLPAPI Java SDK docs and developer guides (sessions, subscriptions, reference-data)
+| https://bloomberg.github.io/blpapi-docs/
+
+| EMSX API
+| EMSX order/execution API documentation (order lifecycle, fields, execution reports)
+| https://emsx-api-doc.readthedocs.io/en/latest/index.html
+
+| Bloomberg API Library & Support
+| General Bloomberg developer resources and entitlement guidance
+| https://www.bloomberg.com/professional/support/api-library/
+
+| React
+| Frontend framework used for the trade capture and PB UIs
+| https://reactjs.org/
+
+| Spring Boot
+| Backend framework used for REST/WebSocket services and dependency injection
+| https://spring.io/projects/spring-boot
+
+| PostgreSQL
+| Reference for relational persistence choices used in examples
+| https://www.postgresql.org/
+|===
