@@ -1,0 +1,34 @@
+eval "$(starship init bash)"
+# ---- Aliases ----
+alias ll='ls -lah'
+alias gs='git status'
+alias gl='git log --oneline --graph --decorate'
+alias python='python3'
+alias pip='pip3'
+
+# ---- Custom PS1 prompt fallback ----
+PS1="\[\e[32m\]\u@\h \[\e[34m\]\w \$\[\e[m\] "
+
+# ---- PATH and Tools ----
+export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:$PATH"
+export EDITOR="vim"
+
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+export PATH="$JAVA_HOME/bin:$PATH"
+
+export M2_HOME=/Users/shailesh/dev-installers/apache-maven-3.9.11
+export PATH="$M2_HOME/bin:$PATH"
+
+# ---- Homebrew Autocomplete ----
+if [ -f "$(brew --prefix)/etc/profile.d/bash_completion.sh" ]; then
+    source "$(brew --prefix)/etc/profile.d/bash_completion.sh"
+fi
+
+
+# Created by `pipx` on 2025-11-07 10:45:07
+export PATH="$PATH:/Users/shailesh/.local/bin"
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/Users/shailesh/.lmstudio/bin"
+# End of LM Studio CLI section
+
