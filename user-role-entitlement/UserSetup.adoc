@@ -1,0 +1,6 @@
+= User Setup Guide
+:toc:
+:toclevels: 2
+:sectnums:
+
+TIP:  “who can do what, where, on whose behalf”

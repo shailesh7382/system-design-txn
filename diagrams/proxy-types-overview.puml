@@ -1,0 +1,34 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor "Internet User" as User
+actor "Employee" as Employee
+cloud "Internet" as Internet
+node "Kubernetes Cluster" as K8s {
+  component "Service A" as SvcA
+  component "Service B" as SvcB
+  component "Sidecar Proxy" as Sidecar
+}
+
+rectangle "Forward Proxy" as FP
+rectangle "Reverse Proxy" as RP
+rectangle "Ingress Proxy" as IP
+rectangle "Egress Proxy" as EP
+
+Employee --> FP : Outbound web/API
+FP --> Internet : Filtered outbound
+
+User --> Internet
+Internet --> RP : Public request
+RP --> IP : Route to platform
+IP --> SvcA : North-south traffic
+
+SvcA --> Sidecar : East-west call
+Sidecar --> SvcB : mTLS + retries
+
+SvcB --> EP : External dependency call
+EP --> Internet : Controlled egress
+@enduml
+

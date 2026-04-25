@@ -1,0 +1,75 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+
+cloud "Internet Users" as Internet
+cloud "Partner Networks" as Partners
+cloud "Enterprise Users" as Employees
+
+node "Perimeter / Edge" as Edge {
+  component "CDN / DDoS Shield" as CDN
+  component "WAF / Edge Reverse Proxy" as WAF
+  component "Edge Load Balancer" as ELB
+}
+
+node "DMZ" as DMZ {
+  component "Web Tier / Ingress" as WebTier
+  component "API Edge / Gateway" as APIEdge
+  component "Bastion / Jump Host" as Bastion
+}
+
+node "Application Zone" as AppZone {
+  component "Web App Tier" as WebApp
+  component "Business Services Tier" as AppSvc
+  component "Service Mesh / Internal Proxy" as Mesh
+}
+
+node "Integration Zone" as IntZone {
+  component "Partner Gateway" as PartnerGW
+  component "Adapters / Transform" as Adapters
+  queue "Messaging / Async Bridge" as MQ
+}
+
+database "Data Zone\n(DB / Cache / Warehouse)" as DataZone
+node "Management / Ops Zone" as OpsZone {
+  component "CI/CD" as CICD
+  component "Monitoring / SIEM" as Mon
+  component "Secrets / PKI" as Secrets
+}
+
+Internet --> CDN : HTTPS
+CDN --> WAF : Filtered traffic
+WAF --> ELB : Allowed web/API traffic
+ELB --> WebTier : 80/443 only
+WebTier --> APIEdge : Routed app/API traffic
+APIEdge --> WebApp : Presentation/API calls
+WebApp --> AppSvc : Internal business calls
+AppSvc --> Mesh : East-west control
+Mesh --> DataZone : Least-privilege DB access
+AppSvc --> PartnerGW : Approved outbound integration
+PartnerGW --> Adapters : Contract + transformation
+Adapters --> MQ : Async or batch handoff
+Partners --> PartnerGW : B2B API / SFTP / MQ
+Employees --> Bastion : Admin access with MFA
+Bastion --> OpsZone : Controlled management path
+OpsZone --> AppSvc : Observability / deployment control
+OpsZone --> DataZone : Backup / break-glass / admin ops
+
+note right of DMZ
+No direct DMZ -> Data access
+Only tightly filtered flows inward
+end note
+
+note bottom of AppZone
+Separate web-facing tier from business tier.
+Do not expose application services directly to internet.
+end note
+
+note bottom of IntZone
+Integration logic is isolated from core app services
+and from direct partner access to internal databases.
+end note
+@enduml
+

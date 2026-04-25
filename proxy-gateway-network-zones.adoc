@@ -1,0 +1,544 @@
+= Proxies, Gateways, and Network Zones in Software Design
+:toc:
+:icons: font
+:imagesdir: .
+:source-highlighter: highlightjs
+:revealjs_theme: white
+:revealjs_slideNumber: true
+:revealjs_hash: true
+:revealjs_center: false
+:revdate: 2026-04-25
+:revnumber: 0.1
+
+This document explains proxy types, gateway patterns, network request flow, and how they help form secure network zones such as ecommerce edge, enterprise intranet, DMZ and extranet.
+
+== Why this matters
+
+Modern systems need three things at the same time:
+
+- Secure exposure to untrusted networks (internet, partner links).
+- Controlled connectivity between internal systems.
+- Predictable performance and reliability under high traffic.
+
+Proxies, gateways, firewalls, routers, and load balancers work together to satisfy these needs across layers and trust zones.
+
+== TCP/IP layer organization first
+
+This guide is organized from lower layers to higher layers, then mapped to zones.
+
+=== Layer-first view (bottom-up)
+
+[cols="1,1,2,2",options="header"]
+|===
+| OSI/TCP focus | Typical protocols | Main components | Typical responsibility
+
+| L3 Network
+| IP, ICMP, routing protocols
+| Routers, network firewalls
+| Route traffic between subnets/zones and enforce baseline segmentation
+
+| L4 Transport
+| TCP, UDP
+| L4 load balancers, stateful firewalls, stunnel (TCP TLS wrap)
+| Port-level policy, connection distribution, connection tracking
+
+| L5/L6 Session + TLS
+| TLS/SSL handshake and session
+| OpenSSL-based stacks, stunnel, TLS terminators
+| Encryption in transit, certificates, ciphers, trust chains
+
+| L7 Application
+| HTTP, gRPC, WebSocket, REST
+| Reverse proxies, API gateways, WAF, L7 load balancers
+| App-aware routing, auth, rate limiting, transformation, threat filtering
+|===
+
+=== Zone placement by layer
+
+- *Perimeter (internet pass:[<->] DMZ)*: L3/L4 routing and filtering first, then L7 reverse proxy/WAF controls.
+- *App zones (ecommerce/enterprise)*: L7 policy via gateway/proxy, with L4 balancing and mTLS where needed.
+- *Extranet and egress*: enforce L3/L4 destination controls and L7 partner/API policies together.
+- *Data and management zones*: minimal exposed surface, with mostly strict L3/L4 allowlists and audited admin paths.
+
+== Core building blocks
+
+=== Proxy (traffic intermediary)
+A proxy is an intermediary that forwards traffic on behalf of a client, user, or service.
+
+In practice, proxies operate mainly in two ways:
+
+* *L4 proxying*:
+  - Works at the transport layer.
+  - Makes decisions based on IP, port, connection state, and sometimes TLS SNI.
+  - Common for TCP/UDP load distribution and TLS passthrough.
+* *L7 proxying*:
+  - Understands application protocols such as HTTP, gRPC, and WebSocket.
+  - Can route based on host, path, header, cookie, token, or method.
+  - Common for reverse proxy, API edge, WAF integration, and content-aware policy.
+
+NOTE: A gateway often uses proxy behavior internally, but a proxy mainly forwards traffic, while a gateway usually adds stronger boundary policy, transformation, or protocol mediation.
+
+==== Common proxy patterns and roles
+
+plantuml::diagrams/proxy-types-overview.puml[format=svg,align=center]
+
+Source: `diagrams/proxy-types-overview.puml`
+
+===== *Forward proxy*:
+  - Sits between internal clients and external destinations.
+  - Common for outbound internet control, DLP, and URL filtering.
+
+===== *Reverse proxy*:
+  - Sits in front of backend services.
+  - Common for TLS termination, path routing, caching, and WAF integration.
+
+=====  *Transparent/intercepting proxy*:
+  - Captures traffic without explicit client config.
+  - Used in enterprise network control and observation.
+
+=====  *SOCKS proxy*:
+  - Protocol-agnostic relay at lower layer than HTTP proxy.
+
+=====  *Ingress proxy role*:
+  - Entry point for north-south traffic into a platform, cluster, or application zone.
+  - Commonly implemented using reverse proxies or ingress controllers.
+
+=====  *Egress proxy role*:
+  - Central outbound point from internal zones to internet or partner destinations.
+  - Commonly used for policy enforcement, logging, filtering, and destination control.
+
+NOTE: Ingress and egress are best understood as deployment roles or traffic positions. Different proxy technologies can be used to implement them.
+
+==== Proxy categories by axis
+
+* *By direction*:
+  - Forward proxy (client -> internet), reverse proxy (internet -> service), egress proxy (internal -> external), ingress proxy (external -> platform).
+* *By client awareness*:
+  - Explicit proxying, where the client is configured to use the proxy, and transparent/intercepting proxying, where traffic is redirected without explicit client configuration.
+* *By protocol/layer*:
+  - L4 proxies (TCP/UDP forwarding, connection state, SNI-based routing), L7 proxies (HTTP-aware routing, headers, cookies, JWT checks).
+* *By security purpose*:
+  - Anonymizing proxy, TLS offload proxy, inspection proxy (DLP/content filtering), zero-trust policy proxy.
+* *By traffic type*:
+  - North-south proxies for perimeter entry/exit and east-west proxies for service-to-service control.
+
+==== L4 proxying and TLS passthrough
+
+* *Definition*:
+  - In TLS passthrough, the proxy/load balancer forwards encrypted TLS traffic without decrypting payloads.
+  - Routing is usually based on destination IP, port, connection state, and optionally TLS SNI metadata without full HTTP inspection.
+* *When to use TLS passthrough*:
+  - End-to-end encryption must stay intact to backend workloads (strict compliance or tenant isolation).
+  - Backend service owns certificates/keys and must terminate TLS itself.
+  - Non-HTTP protocols over TLS are used (for example, custom TCP protocols, TLS-wrapped MQ).
+  - Mutual TLS is validated by the backend application, not by edge infrastructure.
+  - You need simple high-throughput L4 balancing with minimal edge processing latency.
+* *Trade-offs*:
+  - Edge cannot apply deep L7 controls such as HTTP header and payload policy, API auth, or WAF rules.
+  - Observability at edge is reduced to connection-level metrics unless backend exports richer telemetry.
+
+NOTE: Most enterprise designs use multiple proxy types together rather than one universal proxy.
+
+=== Gateway (policy and protocol boundary)
+A gateway is a policy enforcement and transformation point at a boundary.
+
+==== Common gateway patterns
+
+plantuml::diagrams/gateway-patterns-overview.puml[format=svg,align=center]
+
+Source: `diagrams/gateway-patterns-overview.puml`
+
+* *API Gateway*:
+  - Single entry for APIs.
+  - AuthN/AuthZ, throttling, routing, transformation, observability.
+* *Backend for Frontend (BFF)*:
+  - Dedicated gateway per client channel (web, mobile, partner).
+* *Ingress Gateway*:
+  - External-to-cluster traffic entry for container platforms.
+* *Service Gateway*:
+  - East-west service entry point for bounded domains.
+* *Partner Gateway*:
+  - Isolated access for external organizations (B2B APIs, SFTP, EDI).
+* *Data Gateway*:
+  - Controlled access to data stores with masking and policy checks.
+* *Protocol Gateway*:
+  - Bridges protocols (HTTP to gRPC, REST to message bus, etc.).
+
+NOTE: In practice, some products combine reverse proxy and API gateway capabilities. The distinction is mostly about *where policy lives* and *how rich the API lifecycle controls are*.
+
+== Network flow: end-to-end request path
+
+=== Example: ecommerce checkout request
+
+[source,text]
+----
+Customer Browser
+  -> (L3/L4) Internet routing + firewall path
+  -> CDN/Edge Cache
+  -> WAF + DDoS Shield
+  -> Edge Reverse Proxy / Load Balancer
+  -> API Gateway (JWT validation, rate limit, routing)
+  -> Checkout Service
+  -> (L4/L7) internal service mesh/proxy policy
+  -> Payment Adapter
+  -> Payment Partner Gateway (Extranet)
+  -> Bank/PSP
+
+Response returns over same trust boundaries with logging/trace correlation.
+----
+
+=== Control points in the flow
+
+- *Identity and trust*: OAuth/JWT validation at gateway, mTLS internally.
+- *Traffic control*: rate limits, quotas, bot filtering, abuse protection.
+- *Resilience*: retries, timeout budgets, circuit breakers, bulkheads.
+- *Auditability*: request IDs, traces, security logs, immutable events.
+- *Segmentation*: only allowed ports/protocols between zones.
+- *TLS mode selection*: choose L4 TLS passthrough when backend must terminate TLS, or edge TLS termination/offload when centralized policy is needed.
+
+TIP: In presentation settings, this request path is often the best single slide to explain where each control point lives.
+
+== Network zones and their roles
+
+A zone is a trust boundary with explicit policy and constrained communication.
+
+In a production design, zoning should separate not only business domains but also technical layers such as edge, web, application, integration, data, and operations.
+
+plantuml::diagrams/network-zones-trust-boundaries.puml[format=svg,align=center]
+
+Source: `diagrams/network-zones-trust-boundaries.puml`
+
+plantuml::diagrams/network-zones-deployment-segmentation.puml[format=svg,align=center]
+
+Source: `diagrams/network-zones-deployment-segmentation.puml`
+
+=== Segmentation principles
+
+* *Default deny between zones*:
+  - Only explicitly approved ports, protocols, identities, and destinations should be allowed.
+* *Separate user-facing from business-processing tiers*:
+  - Web and API entry points should be isolated from core application services.
+* *Separate synchronous and integration concerns*:
+  - Partner adapters, file exchange, async messaging, and protocol bridges should live in controlled integration segments.
+* *Separate data access from presentation tiers*:
+  - Databases and caches should be reachable only from approved service tiers, never directly from the internet or DMZ.
+* *Separate operations from business traffic*:
+  - CI/CD, monitoring, bastion access, secrets, and administrative channels should use dedicated management paths.
+
+=== Web application layering
+
+- *Edge/perimeter tier*:
+  - CDN, DDoS controls, WAF, edge reverse proxy, and internet-facing load balancers.
+  - Handles internet exposure, TLS policy, bot filtering, and first-hop routing.
+- *Web tier / presentation tier*:
+  - Serves web UI, static assets, ingress rules, and public-facing API entry points.
+  - Should remain stateless where possible and should not hold broad database permissions.
+- *Application / service tier*:
+  - Executes business logic such as checkout, orders, pricing, entitlements, and workflow.
+  - Receives traffic only from approved web, API, or internal service paths.
+- *Data tier*:
+  - Stores transactional data, caches, reporting stores, and warehouses.
+  - Reachable only from allowlisted service identities and tightly controlled admin channels.
+
+=== Integration layering
+
+- *Partner-facing integration tier*:
+  - Hosts partner gateways, B2B APIs, SFTP endpoints, EDI bridges, and protocol-specific adapters.
+  - Shields internal services from direct partner connectivity.
+- *Transformation and validation tier*:
+  - Normalizes schemas, validates contracts, applies anti-corruption logic, and enriches payloads.
+  - Prevents partner-specific logic from leaking into core business services.
+- *Async integration tier*:
+  - Handles queues, event relays, batch transfers, reconciliation, and delayed delivery.
+  - Reduces coupling between public or partner traffic and internal processing.
+- *Controlled egress tier*:
+  - Ensures all outbound partner and internet traffic passes through approved egress proxies, firewalls, and monitoring points.
+
+=== Internet/Public zone
+
+- Untrusted origin traffic.
+- Entry controls: DDoS protection, WAF, TLS policies.
+- Never allow direct access to core systems.
+- Allowed flows should terminate at the edge or DMZ only.
+- Direct reachability to web-app internals, integration workers, or data stores should be blocked.
+
+=== DMZ (Demilitarized Zone)
+
+- Hosts internet-facing intermediaries only (reverse proxy, API edge, bastion, mail relays).
+- No direct database access from DMZ workloads.
+- Strict one-way or tightly filtered flows to internal zones.
+- Typical responsibilities include TLS termination, request filtering, ingress routing, and jump-host isolation.
+- DMZ systems should avoid persistent business data and should be treated as higher-risk assets.
+
+=== Ecommerce zone
+
+- Customer-facing business services (catalog, cart, checkout, order APIs).
+- Usually split into:
+  - Edge-facing stateless services.
+  - Internal services with stronger identity checks.
+- High autoscaling and stricter runtime protections.
+- A web-facing tier may expose storefront UI, API aggregation, or BFF endpoints.
+- A deeper application tier should run pricing, order processing, entitlement, and workflow logic.
+- Only approved service paths from the web tier to the app tier should be allowed.
+
+=== Enterprise zone (intranet)
+
+- Internal user apps, operations tools, HR/finance systems.
+- Access generally from managed devices/VPN/ZTNA.
+- Outbound access often via forward proxy and egress firewall.
+- Often includes staff portals, relationship-manager tools, internal dashboards, and reporting access.
+- Should be segmented from public ecommerce traffic even if both ultimately call some common backend services.
+
+=== Extranet zone
+
+- Controlled connectivity to partners/vendors.
+- Uses partner gateway patterns, dedicated credentials, and tenant isolation.
+- Typical protocols: HTTPS API, SFTP, MQ bridges, private links.
+- This is usually the outer face of the integration layer rather than a place for core business logic.
+- Partner flows should enter here first, then pass into validation, transformation, and async integration components.
+
+=== Data zone (restricted)
+
+- Databases, warehouses, caches with sensitive data.
+- Reachable only from approved app tiers through strict policy.
+- Encryption at rest + in transit, least-privilege service identities.
+- Separate operational databases, analytical stores, and cache tiers where risk or scale requires it.
+- Enforce backup, break-glass administration, and schema-change access through dedicated management controls.
+
+=== Management/Ops zone
+
+- Hosts CI/CD runners, monitoring, logging, secrets, bastions, and operational tooling.
+- Should have separate administrative connectivity and stronger MFA/session controls.
+- Must not be casually reachable from user-facing or partner-facing segments.
+- Often owns deployment pipelines, observability paths, certificate operations, and break-glass procedures.
+
+
+== Role of firewall, router, and load balancer
+
+=== Firewall
+
+Primary role: *allow/deny and inspect traffic by policy*.
+
+- Network firewalls enforce L3/L4 rules between zones/subnets.
+- Next-generation firewalls can inspect L7 signatures and applications.
+- Web Application Firewall (WAF) protects HTTP apps (OWASP-style threats).
+- Egress firewall controls outbound destinations to reduce exfiltration risk.
+
+=== Router
+
+Primary role: *forward packets across networks and choose path*.
+
+- Connects subnets, VLANs, and WAN links.
+- Uses routing tables/protocols (static, OSPF, BGP) to pick next hop.
+- Often paired with ACLs and route segmentation for zone isolation.
+- Critical for multi-site enterprise and cloud hybrid connectivity.
+
+=== Load balancer
+
+Primary role: *distribute traffic and improve availability*.
+
+- L4 load balancer: high-performance TCP/UDP distribution.
+- L7 load balancer: content-aware routing (host/path/header/cookie).
+- Health checks remove unhealthy nodes.
+- Can provide TLS termination, sticky sessions, canary routing.
+
+NOTE: A load balancer improves scale and availability, but it is not by itself a complete security control.
+
+== Proxy and TLS technologies in practice
+
+=== TLS handling modes at boundaries
+
+* *TLS passthrough (L4)*:
+  - Edge forwards encrypted traffic; TLS session is terminated only at backend service.
+  - Best for strict end-to-end encryption boundaries and backend-controlled certificates.
+* *TLS termination (L7 edge termination)*:
+  - Proxy/gateway/load balancer decrypts inbound TLS at the edge, applies L7 policy, then forwards traffic to backend (HTTP or re-encrypted HTTPS).
+  - Enables WAF, API auth/rate-limit, content routing, header manipulation, and richer observability.
+* *SSL offload (performance-focused edge termination)*:
+  - A specific form of edge termination where expensive TLS handshake/encryption work is moved from app servers to dedicated proxy/LB.
+  - Primary goal is reducing backend CPU load and simplifying certificate operations.
+
+NOTE: In modern terminology, TLS is preferred over SSL. "SSL offload" remains a common operational term for TLS offload behavior.
+
+=== Why termination and offload are needed
+
+* *Centralized security policy*:
+  - Apply uniform controls (WAF rules, protocol versions, cipher suites, HSTS, header policies) at a small number of edge points.
+* *Certificate lifecycle simplification*:
+  - Manage issuance, renewal, rotation, and revocation centrally instead of on every backend node.
+* *Performance and cost efficiency*:
+  - Offloading TLS work from app services improves backend capacity for business logic.
+* *Traffic governance and visibility*:
+  - Decrypted L7 visibility enables API governance, anomaly detection, and better troubleshooting.
+* *Controlled re-encryption*:
+  - Even with edge termination/offload, traffic can be re-encrypted to backend to preserve in-transit security within internal zones.
+
+=== Quick decision guide: passthrough vs termination vs offload
+
+[cols="1,2,2",options="header"]
+|===
+| Mode | Best fit | Main limitation
+
+| L4 TLS passthrough
+| Backend must own TLS identity and inspect/decrypt traffic itself
+| No full L7 policy at edge (limited WAF/API controls)
+
+| TLS termination
+| Centralized L7 security/policy and smart routing at edge
+| Requires strong trust controls between edge and backend (or re-encryption)
+
+| SSL/TLS offload
+| Reduce backend crypto overhead at scale
+| Often paired with termination; not a substitute for full app-layer policy design
+|===
+
+=== HAProxy
+
+- High-performance L4/L7 load balancer and reverse proxy.
+- Strong fit for edge ingress, internal service load balancing, and health-check-based failover.
+- Common capabilities: TLS termination, stickiness, rate limiting, ACL-based routing, blue/green and canary.
+- Typical zone placement: DMZ edge, ecommerce ingress tier, internal service entry points.
+
+=== Apache HTTP Server (httpd)
+
+- Mature web server with strong reverse proxy support (`mod_proxy`, `mod_proxy_balancer`) and optional WAF (`mod_security`).
+- Strong fit for legacy integration, static hosting + reverse proxy, and highly customized module-based setups.
+- Can act as forward proxy in enterprise environments when policy requires it.
+- Typical zone placement: DMZ web tier, enterprise intranet applications.
+
+=== Nginx
+
+- Event-driven web server, reverse proxy, and L7 load balancer with efficient connection handling.
+- Strong fit for API front doors, static content offload, TLS termination, and websocket/SSE proxying.
+- Common capabilities: path/host routing, caching, gzip/brotli, upstream health checks (variant dependent).
+- Typical zone placement: internet edge, API gateway front tier, Kubernetes ingress.
+
+=== stunnel
+
+- Lightweight TLS tunnel proxy for wrapping plaintext TCP services in TLS.
+- Strong fit when legacy protocols/apps need encryption without code changes.
+- Works as client-side or server-side TLS wrapper (for example DB, SMTP, custom TCP).
+- Typical zone placement: extranet links, legacy enterprise segments, controlled service bridges.
+
+=== OpenSSL (library + toolkit)
+
+- Cryptographic library and command-line toolkit, not a full traffic proxy by itself.
+- Provides TLS primitives used by proxies/gateways (certificate handling, ciphers, handshake behavior).
+- Useful for certificate generation, inspection, and troubleshooting TLS endpoints.
+- Often used under the hood by Nginx/Apache ecosystems (implementation varies by build/distribution).
+
+=== Quick selection guide
+
+[cols="1,3,2",options="header"]
+|===
+| Technology | Best use | Watchouts
+
+| HAProxy
+| High-throughput balancing and reverse proxy for APIs/services
+| Requires deliberate config management for very large rule sets
+
+| Apache HTTPD
+| Flexible web/proxy stack, legacy compatibility, module ecosystem
+| Higher tuning effort for high-concurrency modern API workloads
+
+| Nginx
+| Efficient edge reverse proxy, static + API traffic, ingress patterns
+| Feature differences across open-source vs commercial variants
+
+| stunnel
+| TLS wrapping for legacy TCP endpoints
+| No rich HTTP policy/routing features like L7 proxies
+
+| OpenSSL
+| TLS crypto building blocks and diagnostics
+| Not a standalone replacement for reverse/forward proxies
+|===
+
+== How components work together by layer
+
+The following is a practical TCP-layer-oriented crosswalk from boundary controls to application policies.
+
+[cols="1,2,2",options="header"]
+|===
+| Layer | Typical component | Main responsibility
+
+| L3/L4 perimeter
+| Router + Network Firewall
+| Segmentation, routing, and baseline access control
+
+| L4 transport control
+| L4 Load Balancer + Stateful Firewall + stunnel
+| Connection management, high-throughput distribution, transport-level protection
+
+| L7 edge
+| Reverse Proxy + WAF + L7 Load Balancer
+| App-aware filtering, TLS, path routing, bot/threat mitigation
+
+| API control plane
+| API Gateway/BFF
+| Auth, quotas, contracts, API lifecycle governance
+
+| Service-to-service
+| Service mesh sidecars / internal gateway
+| mTLS, retries, policy, observability
+
+| Outbound control
+| Forward/Egress Proxy + Egress Firewall
+| Destination control, inspection, compliance logging
+
+| TLS and crypto foundation
+| OpenSSL-based runtime/tooling
+| Certificate lifecycle, cipher policy, endpoint validation, TLS diagnostics
+|===
+
+== Reference zone patterns
+
+=== Pattern A: Internet-facing ecommerce
+
+plantuml::diagrams/pattern-a-internet-ecommerce.puml[format=svg,align=center]
+
+Source: `diagrams/pattern-a-internet-ecommerce.puml`
+
+Use when exposing public APIs or web traffic at scale.
+
+=== Pattern B: Enterprise intranet with controlled outbound
+
+plantuml::diagrams/pattern-b-enterprise-egress-control.puml[format=svg,align=center]
+
+Source: `diagrams/pattern-b-enterprise-egress-control.puml`
+
+Use when strongest requirement is corporate policy, audit, and data protection.
+
+=== Pattern C: B2B extranet integration
+
+plantuml::diagrams/pattern-c-b2b-extranet-integration.puml[format=svg,align=center]
+
+Source: `diagrams/pattern-c-b2b-extranet-integration.puml`
+
+Use when partner contracts, protocol translation, and tenant isolation are key.
+
+== Design guidance and trade-offs
+
+=== Placement guidance
+
+- Put WAF and anti-DDoS before core app entry points.
+- Keep API gateway as policy choke point, not business logic host.
+- Keep DMZ stateless where possible; avoid persistent secrets there.
+- Prefer deny-by-default between zones, then open minimal required flows.
+- Separate management traffic from user/business traffic.
+
+=== Common mistakes
+
+- Treating one load balancer as complete security control.
+- Allowing direct internet-to-app or DMZ-to-database connectivity.
+- Duplicating auth logic inconsistently in every microservice.
+- Ignoring egress controls (data exfiltration blind spot).
+- Missing end-to-end trace IDs across proxy/gateway hops.
+
+=== Performance and reliability notes
+
+- Every hop adds latency; place controls where value exceeds cost.
+- Use connection pooling and keep-alive at proxies/gateways.
+- Tune timeout and retry budgets to avoid retry storms.
+- Use active-active edge where possible for regional resilience.
+- Test failure modes: gateway down, route blackhole, zone isolation.

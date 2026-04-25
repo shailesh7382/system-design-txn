@@ -1,0 +1,33 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor "Customer" as Customer
+cloud "Internet" as Internet
+rectangle "Edge\nCDN + DDoS + WAF" as Edge
+rectangle "DMZ\nReverse Proxy + L7 LB" as DMZ
+rectangle "Ecommerce App Zone\nAPI Gateway + Services" as App
+rectangle "Extranet\nPartner Gateway" as Extranet
+database "Data Zone\nDB + Cache" as Data
+cloud "Payment Partner" as PSP
+
+Customer --> Internet
+Internet --> Edge : HTTPS
+Edge --> DMZ : Filtered web/API traffic
+DMZ --> App : Routed application traffic
+App --> Data : Least-privilege DB calls
+App --> Extranet : Payment request
+Extranet --> PSP : Partner API/SFTP
+PSP --> Extranet : Auth/settlement response
+Extranet --> App : Normalized partner response
+App --> DMZ
+DMZ --> Edge
+Edge --> Internet
+Internet --> Customer
+
+note right of DMZ
+No direct DMZ -> Data access
+end note
+@enduml
+

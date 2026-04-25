@@ -1,0 +1,34 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor "Web Client" as Web
+actor "Mobile App" as Mobile
+actor "Partner System" as Partner
+
+rectangle "BFF (Web)" as BFFWeb
+rectangle "BFF (Mobile)" as BFFMobile
+rectangle "API Gateway" as APIGW
+rectangle "Partner Gateway" as PGW
+rectangle "Ingress Gateway" as IGW
+
+package "Service Domain" {
+  component "Order Service" as OrderSvc
+  component "Portfolio Service" as PortfolioSvc
+  component "Auth Service" as AuthSvc
+}
+
+Web --> BFFWeb
+Mobile --> BFFMobile
+BFFWeb --> APIGW
+BFFMobile --> APIGW
+Partner --> PGW
+PGW --> APIGW
+
+APIGW --> IGW : Route + policy
+IGW --> OrderSvc
+IGW --> PortfolioSvc
+APIGW --> AuthSvc : Token validation/introspection
+@enduml
+

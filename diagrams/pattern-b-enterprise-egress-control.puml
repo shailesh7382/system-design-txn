@@ -1,0 +1,29 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor "Employee Device" as User
+rectangle "ZTNA / VPN Gateway" as Access
+rectangle "Enterprise App Zone\nIntranet Apps" as EntApps
+rectangle "Shared Services\nIAM, DNS, Logging" as Shared
+rectangle "Forward Proxy" as FP
+rectangle "Egress Firewall" as EF
+cloud "Internet / SaaS" as Internet
+
+User --> Access : Authenticated session
+Access --> EntApps : App access
+EntApps --> Shared : Internal dependencies
+EntApps --> FP : Outbound request
+FP --> EF : URL/category policy
+EF --> Internet : Allowlisted egress
+Internet --> EF
+EF --> FP
+FP --> EntApps
+
+note bottom of FP
+Outbound paths are logged,
+filtered, and policy-enforced.
+end note
+@enduml
+

@@ -1,0 +1,32 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+cloud "Internet / Public" as ZInternet
+rectangle "DMZ Zone\n(WAF, Reverse Proxy, Edge LB)" as ZDMZ
+rectangle "Ecommerce Zone\n(API Gateway, Checkout, Order)" as ZEcom
+rectangle "Enterprise Zone\n(Internal Apps, Ops Portals)" as ZEnt
+rectangle "Extranet Zone\n(Partner Gateway, B2B APIs)" as ZExtra
+database "Data Zone\n(DB, Cache, Warehouse)" as ZData
+rectangle "Management/Ops Zone\n(CI/CD, Monitoring, Bastion)" as ZMgmt
+
+ZInternet --> ZDMZ : Inbound HTTPS only
+ZDMZ --> ZEcom : Filtered app traffic
+ZEcom --> ZData : Least-privilege DB access
+ZEcom --> ZExtra : Partner calls via gateway
+ZEnt --> ZEcom : Internal user/admin APIs
+ZEnt --> ZData : Approved read/write paths
+ZMgmt --> ZEcom : Admin/observability control plane
+ZMgmt --> ZData : Break-glass + backup ops
+
+note right of ZDMZ
+No direct DMZ -> Data access
+end note
+
+note bottom of ZEcom
+All zone-to-zone traffic is allowlisted
+by firewall rules and routing policy.
+end note
+@enduml
+

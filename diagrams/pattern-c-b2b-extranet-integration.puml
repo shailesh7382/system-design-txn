@@ -1,0 +1,29 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+cloud "Partner Network" as Partner
+rectangle "Extranet Zone\nPartner Gateway" as PGW
+rectangle "Integration Services\nValidate + Transform" as IntSvc
+rectangle "Internal API Gateway" as IAGW
+queue "Message Bus" as MQ
+rectangle "Core Services" as Core
+
+Partner --> PGW : B2B API/SFTP/MQ
+PGW --> IntSvc : Contract + auth policy
+IntSvc --> IAGW : Normalized payload
+IAGW --> Core : Internal API call
+IAGW --> MQ : Async events
+MQ --> Core : Consumption
+Core --> IAGW : Response/event ack
+IAGW --> IntSvc
+IntSvc --> PGW
+PGW --> Partner
+
+note right of PGW
+Per-partner isolation,
+credentials, and throttling.
+end note
+@enduml
+
