@@ -1,0 +1,76 @@
+= Retail Equities Platform: Executive Architecture Brief
+:doctype: article
+:toc:
+:toclevels: 2
+
+== Purpose
+
+This executive brief provides a board-friendly view of how the retail equities platform delivers secure digital trading, real-time market visibility, and reliable external execution.
+
+It summarizes the operating model behind ETA (mobile channel), ETS (core trading platform), DZH market data, and broker connectivity.
+
+== Executive Diagram
+
+image::../diagrams/retail-equities-executive-zones-flow.puml[Retail Equities Executive Zones and Flow,align=center]
+
+== Business Outcomes
+
+The architecture is designed to achieve five outcomes:
+
+* *Customer confidence:* secure mobile access and resilient trading journeys
+* *Execution quality:* dependable market and limit order processing
+* *Market transparency:* live pricing, watchlist updates, and clear order status
+* *Operational scalability:* one-to-many market data distribution for peak demand periods
+* *Control and governance:* clear trust boundaries for internal and external connectivity
+
+== High-Level Operating Model
+
+At a high level, the platform operates in four business layers:
+
+. *Digital channel layer:* ETA mobile app provides customer interaction and order capture.
+. *Security and distribution layer:* requests are authenticated at secure entry points and live market data sessions are managed centrally.
+. *Core trading layer:* ETS services perform business processing, order/risk handling, and market data orchestration.
+. *Connectivity layer:* controlled extranet pathways connect to DZH for market data and to brokers for trade execution.
+
+This layered approach supports strong controls without compromising customer responsiveness.
+
+== Customer and Trading Capabilities
+
+The executive capability set includes:
+
+* Buy and sell using market and limit orders
+* Live watchlist and ticker updates
+* Order history and transaction visibility
+* Stable post-logon streaming for market data consumption
+
+== Market Data Strategy (Executive View)
+
+The platform uses a consolidated market data strategy:
+
+* ETA clients register a streaming session after logon
+* Subscription intent is handled by core services
+* Market data is ingested from DZH once per instrument path
+* A centralized session hub fans out updates to all subscribed clients
+
+Business value:
+
+* Lower duplicate traffic across internal zones
+* Better performance consistency during active market hours
+* More efficient scaling as user concurrency grows
+
+== Risk and Control Highlights
+
+Key control measures are built into the deployment model:
+
+* Segmented zones across channel, core platform, data, and extranet connectivity
+* Security gateway controls for authentication and encrypted ingress
+* Controlled external connectivity for market data and brokers
+* Integrated order management and risk processing before execution
+* Shared enterprise data platform for traceability and reporting
+
+== Strategic Takeaways for Leadership
+
+The current design supports near-term growth in retail trading volumes while maintaining strong operational controls.
+
+It also provides a scalable foundation for future enhancements such as richer analytics, broader instrument coverage, and expanded digital engagement features.
+

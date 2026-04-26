@@ -1,0 +1,184 @@
+= Retail Equities Trading Application: Deployment Architecture Overview
+:doctype: article
+:toc:
+:toclevels: 3
+
+== Purpose
+
+This document explains how the mobile customer channel (ETA), enterprise trading services (ETS), and market connectivity components work together to deliver secure, low-latency, and reliable trading services.
+
+The solution uses the DZH equities ecosystem for market data and external trading connectivity.
+
+== Business Context
+
+The platform is designed to support retail investors who need:
+
+* Real-time market visibility (prices, index tickers, and watchlists)
+* Fast and dependable order execution (market and limit orders)
+* Clear post-trade transparency (order history and transaction history)
+* Strong security and operational resilience
+
+From a business perspective, the architecture balances three priorities:
+
+. *Trust and protection* through network-zone controls and authentication gates
+. *Execution speed* for market data and order routing paths
+. *Scalability and reliability* through layered integration and shared messaging patterns
+
+== End-to-End Channel Flow (Mobile to Core Trading)
+
+=== 1) Customer Channel (External)
+
+The ETA Equities App is a React Native mobile application used by retail customers. It operates as an external channel and connects to services hosted in the UOB data center.
+
+After successful logon, ETA initiates a dedicated REST call to register a Server-Sent Events (SSE) session for real-time market data streaming.
+
+=== 2) eComm Web Zone (Security Edge)
+
+Incoming HTTPS requests from ETA are terminated in the eComm Web Zone.
+
+At this boundary, the platform:
+
+* Performs SSL/TLS termination (encryption offload)
+* Applies authentication and security inspection
+* Enforces entry controls before traffic is allowed deeper into internal zones
+
+This design protects enterprise systems while keeping mobile interactions responsive.
+
+The web zone also hosts the SSE session manager, which maintains authenticated streaming sessions for connected ETA users.
+
+=== 3) eComm Application and Proxy Layer
+
+After validation at the web edge, requests move into the eComm application layer and then to the ETA proxy.
+
+The ETA proxy provides controlled forwarding into downstream services and supports policy-based routing, isolation, and observability.
+
+For market data delivery, the SSE session manager at the web layer is connected to the enterprise feed path through CORBA IIOP, enabling low-latency updates from core services to customer sessions.
+
+=== 4) eComm Integration Zone
+
+Validated traffic is routed to a load balancer in the eComm Integration Zone.
+
+The load balancer distributes traffic to available backend application instances, supporting:
+
+* Horizontal scale during peak market windows
+* Better fault tolerance
+* Consistent user experience under variable load
+
+=== 5) Enterprise Zone (Core ETS Services)
+
+From integration, calls are sent to the JBoss-hosted J2EE ETS backend in the Enterprise Zone. This backend exposes the core APIs used by the ETA mobile app.
+
+== Core ETS Deployment Components
+
+The ETS platform in the Enterprise Zone includes the following core services:
+
+=== J2EE Application Server (JBoss)
+
+The J2EE application tier handles API orchestration, business validation, and user-level trading workflows from ETA.
+
+=== OMS Server
+
+The OMS (Order Management System) server hosts:
+
+* Order lifecycle management
+* Risk management controls
+* FIX engines for broker connectivity
+
+This server is central to pre-trade checks, order routing, and execution state management.
+
+=== Feed Server
+
+The feed server ingests and distributes market data required for prices, watchlists, and ticker updates.
+
+Market-data subscriptions follow an organized flow:
+
+. ETA sends a market-data subscribe request (for example, watchlist instruments) to backend APIs.
+. The request is processed by the ETS J2EE application tier.
+. The J2EE tier forwards the subscription to the feed server.
+. The feed server subscribes to the DZH ticker plant using the proprietary ticker-plant protocol.
+. Incoming subscribed ticks are sent to the SSE session manager in the web layer.
+. The SSE session manager fans out updates to all connected ETA clients subscribed to that instrument.
+
+This model supports efficient scale because one upstream market-data stream can serve many client sessions.
+
+=== Batch Server
+
+The batch server supports scheduled and end-of-day operational processes, including reconciliations and reporting-related workloads.
+
+== Extranet and External Market Connectivity
+
+=== DZH Market Data Path
+
+The feed server connects through the Extranet Zone via a dedicated leased line to the DZH ticker plant.
+
+An extranet proxy governs outward connectivity to DZH, ensuring external data exchange is controlled, monitored, and segmented from internal enterprise zones.
+
+From a business operations view, this creates a controlled upstream/downstream path: subscription intent goes from ETA to feed services, while normalized price updates return from DZH to enterprise feed services and then to web-layer SSE sessions for customer delivery.
+
+=== Broker Execution Path
+
+The OMS server uses FIX connectivity processes to reach external brokers through the Extranet Zone, including:
+
+* UOB Kay Hian
+* Goldman Sachs
+
+Broker links are provisioned over dedicated leased lines and mediated by extranet proxy controls. This allows secure and auditable execution routing for customer orders.
+
+== Data Layer and Integration Backbone
+
+=== Oracle Database Layer
+
+Oracle is the primary persistence layer and is connected to:
+
+* J2EE application server
+* OMS server
+* Feed server
+* Batch server
+
+A shared data platform enables a consistent source of truth across order, reference, and historical datasets.
+
+=== Communication Patterns
+
+The platform uses two communication patterns based on business criticality and latency profile:
+
+* *CORBA IIOP* for latency-sensitive flows, especially between J2EE, OMS, and feed services for time-critical market data and order interactions
+* *ActiveMQ topics* for standard asynchronous communication across services where decoupling and throughput are the priority
+
+This dual-pattern approach supports both speed-sensitive trading paths and resilient internal event distribution.
+
+In the market-data path specifically, CORBA IIOP is used for low-latency transmission between enterprise services and the web-layer SSE session manager so clients receive near-real-time updates.
+
+== Key Business Capabilities Delivered
+
+The architecture supports the following customer-facing capabilities in ETA:
+
+* Market order and limit order execution
+* Watchlist management
+* Index and instrument ticker visibility
+* Order history
+* Transaction history
+
+For live pricing, the platform uses an SSE fan-out model where a single enterprise market-data stream is reused to serve multiple subscribed ETA users.
+
+These capabilities are backed by controlled zone transitions, enterprise-grade processing, and external market/broker connectivity.
+
+== Security, Risk, and Operational Controls (Business View)
+
+The deployment model enforces layered controls aligned to financial-services expectations:
+
+* Segregated network zones for trust-boundary management
+* Proxy-mediated outbound connectivity to market data and brokers
+* Authentication and TLS offload at secure entry points
+* Load-balanced service entry for availability and continuity
+* OMS risk controls integrated with execution flow
+
+Together, these controls reduce operational risk while supporting responsive retail trading.
+
+== Summary
+
+The retail equities platform combines a modern external mobile channel (ETA) with a zoned enterprise backend (ETS) to provide secure access, low-latency trading pathways, and robust market connectivity.
+
+By integrating DZH market data, FIX-based broker execution, and shared enterprise data services, the solution delivers a strong foundation for reliable retail equities trading at scale.
+
+Its market-data delivery optimization reduces duplicate traffic across internal zones: one instrument stream is carried from enterprise to the web layer, then distributed to many mobile clients through managed SSE sessions.
+

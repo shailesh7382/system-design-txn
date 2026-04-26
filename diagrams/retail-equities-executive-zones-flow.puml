@@ -1,0 +1,102 @@
+@startuml
+' Executive-level simplified view
+
+title Retail Equities Platform - Executive Architecture View
+'left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam wrapWidth 180
+skinparam maxMessageSize 140
+
+skinparam package<<zone_channel>> {
+  BackgroundColor #E8F0FF
+  BorderColor #4A78A8
+}
+skinparam package<<zone_security>> {
+  BackgroundColor #EAF7F7
+  BorderColor #3C8C8C
+}
+skinparam package<<zone_core>> {
+  BackgroundColor #F3E8FF
+  BorderColor #8C62B5
+}
+skinparam package<<zone_data>> {
+  BackgroundColor #FFE8E8
+  BorderColor #B95F5F
+}
+skinparam package<<zone_extranet>> {
+  BackgroundColor #EEF5FF
+  BorderColor #3D6796
+}
+
+actor "Retail Customers" as Customer
+component "ETA Mobile App" as ETA
+
+package "UOB Data Centre" {
+  package "Customer and Access Zone" <<zone_channel>> {
+    component "Digital Access Channel" as Access
+  }
+
+  package "Security and Distribution Zone" <<zone_security>> {
+    component "Security Gateway\n(Auth + TLS Offload)" as SecGate
+    component "Market Data Session Hub\n(SSE Distribution)" as SSEHub
+  }
+
+  package "Core Trading Platform" <<zone_core>> {
+    component "ETS Trading Services\n(API + Order Processing)" as ETS
+    component "Order Management and Risk" as OMS
+    component "Market Data Services" as Feed
+  }
+
+  package "Enterprise Data Platform" <<zone_data>> {
+    database "Oracle Data Platform" as Oracle
+  }
+
+  package "Extranet Connectivity Zone" <<zone_extranet>> {
+    component "Controlled External Connectivity" as XConn
+  }
+}
+
+cloud "DZH Market Data Provider" as DZH
+node "External Brokers\n(UOB Kay Hian, Goldman Sachs)" as Brokers
+
+Customer --> ETA : Mobile investing
+ETA -[#1F77B4]-> Access : Digital requests
+Access -[#1F77B4]-> SecGate : Secure entry
+SecGate -[#1F77B4]-> ETS : Business APIs and trading actions
+
+ETA -[#1F77B4]-> SecGate : Post-logon stream registration
+SecGate -[#17BECF]-> SSEHub : Session activation
+ETS -[#D62728]-> Feed : Market subscription control
+Feed -[#2CA02C]-> XConn : Market data connectivity
+XConn -[#2CA02C]-> DZH : Price feed integration
+Feed -[#D62728]-> SSEHub : Consolidated market stream
+SSEHub -[#17BECF]-> ETA : Live price fan-out
+
+ETS -[#1F77B4]-> OMS : Order and risk workflow
+OMS -[#FF7F0E]-> XConn : Broker routing
+XConn -[#FF7F0E]-> Brokers : Trade execution
+
+ETS --> Oracle : Trading and customer records
+OMS --> Oracle : Execution and risk state
+Feed --> Oracle : Market snapshots
+
+note right of SSEHub
+Executive optimization:
+One consolidated market stream is reused
+for many clients, reducing duplicate traffic
+and improving scalability.
+end note
+
+legend right
+|= Flow Type |= Meaning |
+| <color:#1F77B4>Digital service flow</color> | Customer/API request and control flow |
+| <color:#17BECF>Real-time distribution</color> | SSE live market updates to clients |
+| <color:#D62728>Low-latency internal</color> | Time-sensitive internal market path |
+| <color:#2CA02C>External market integration</color> | Connectivity to DZH market data |
+| <color:#FF7F0E>Broker execution</color> | Order execution with brokers |
+endlegend
+
+@enduml
+

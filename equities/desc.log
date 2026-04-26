@@ -1,0 +1,21 @@
+in the equities folder, create a adoc file to explain the deployment diagram of a equities trading app for retail.
+
+DZH equities system is used.
+
+ETA - Equities app will be the react native external app for mobile that will access backend in UOB data centre .
+In ecomm web zone, https calls from ets will terminate, off load encryption and authentication and cross to ecomm app layer to hit eta proxy for proxying to ecommerce zone.
+It will hit ecomm integration zone for load balancer and then, enter jboss hosted j2ee ets backend that is serving the actual api calls. This is now in enterprise zone.
+
+This is where the ETS equities system is hosted. It has j2ee on jboss, oms server , feed server and batch server.
+feed server connected to extranet zone to dedicated lease line with DZH ticker plant for all market data push . In extranet zone there is a proxy to manage outward connection to ticker plant.
+Oms server is OMS, risk management and fix engines connected to brokers, KH and GS in the extranet zone. lease lien to the brokers. They are also forwarded via proxy in extranet zone.
+
+At the data layer, we have oracle db that is connected with j2ee app, oms, feed and batch servers.
+for latency sensitive connectivity and data transfer likew for market data or orders, corba iiop is used between  j2ee app, oms, feed.
+For normal communication, it is activemq based topics across.
+OMS server also have fix connectivity processes to UOB Kay hian and Goldman Sachs as brokers for order processing on executin in OMS itself.
+
+EYA has limit and market order execution, watch list and tickers for indexes, order history, transaction history etc.
+
+
+

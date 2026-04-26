@@ -1,0 +1,170 @@
+@startuml
+' Retail equities deployment + flow architecture (ETA + ETS)
+title Retail Equities (ETA/ETS) - Unified Deployment and Flow Diagram
+'left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam wrapWidth 220
+skinparam maxMessageSize 180
+
+' Trust-boundary color palette
+skinparam package<<zone_uob>> {
+  BackgroundColor #F8FAFD
+  BorderColor #6B7A90
+}
+skinparam package<<zone_web>> {
+  BackgroundColor #DDEEFF
+  BorderColor #4A78A8
+}
+skinparam package<<zone_ecomm>> {
+  BackgroundColor #EEF5FF
+  BorderColor #3D6796
+}
+skinparam package<<zone_app>> {
+  BackgroundColor #E8F7E8
+  BorderColor #4E9A4E
+}
+skinparam package<<zone_int>> {
+  BackgroundColor #FFF4D6
+  BorderColor #C69B2D
+}
+skinparam package<<zone_ent>> {
+  BackgroundColor #F3E8FF
+  BorderColor #8C62B5
+}
+skinparam package<<zone_data>> {
+  BackgroundColor #FFE8E8
+  BorderColor #B95F5F
+}
+skinparam package<<zone_extranet>> {
+  BackgroundColor #EAF7F7
+  BorderColor #3C8C8C
+}
+
+skinparam component<<external>> {
+  BackgroundColor #F2F2F2
+  BorderColor #7A7A7A
+}
+skinparam node<<external>> {
+  BackgroundColor #F2F2F2
+  BorderColor #7A7A7A
+}
+skinparam cloud<<external>> {
+  BackgroundColor #F2F2F2
+  BorderColor #7A7A7A
+}
+
+actor "Retail Investor" as Investor
+component "ETA Mobile App\n(React Native)" as ETA <<external>>
+
+package "UOB Data Centre" <<zone_uob>> {
+  package "eComm Zone" <<zone_ecomm>> {
+    package "eComm Web Zone" <<zone_web>> {
+      component "HTTPS\nTLS Offload + Auth" as WebEdge
+      component "SSE Session Manager\n(Web Layer)" as SSE
+    }
+
+    package "eComm Application Zone" <<zone_app>> {
+      component "eComm App Layer" as EcommApp
+      component "ETA Proxy" as EtaProxy
+    }
+
+    package "eComm Integration Zone" <<zone_int>> {
+      component "Load Balancer" as LB
+    }
+  }
+
+  package "Enterprise Zone - ETS Core" <<zone_ent>> {
+    node "JBoss" as JBoss {
+      component "ETS Client APIs\n(J2EE)" as J2EE
+    }
+    component "OMS Server\n(OMS + Risk + FIX Engines)" as OMS
+    component "Feed Server" as Feed
+    component "Batch Server" as Batch
+    queue "ActiveMQ Topics" as MQ
+  }
+
+  package "Data Layer" <<zone_data>> {
+    database "Oracle Database" as Oracle
+  }
+
+  package "Extranet Zone" <<zone_extranet>> {
+    component "Extranet Proxy" as XProxy
+  }
+}
+
+cloud "DZH Ticker Plant" as DZH <<external>>
+node "UOB Kay Hian" as KH <<external>>
+node "Goldman Sachs" as GS <<external>>
+
+Investor -[#1F77B4]-> ETA : Use mobile trading features
+ETA -[#1F77B4]-> WebEdge : 1) HTTPS API calls (logon, orders, portfolio)
+ETA -[#1F77B4]-> WebEdge : 2) Post-logon REST call to register SSE session
+WebEdge -[#1F77B4]-> SSE : 3) Create authenticated SSE session
+WebEdge -[#1F77B4]-> EcommApp : 4) Forward validated requests
+EcommApp -[#1F77B4]-> EtaProxy : 5) Policy-based routing
+EtaProxy -[#1F77B4]-> LB : 6) Proxy to integration tier
+LB -[#1F77B4]-> J2EE : 7) Route to ETS APIs
+
+J2EE -[#1F77B4]-> OMS : 8) Order workflow + risk checks
+OMS -[#FF7F0E]-> XProxy : 9) FIX order routing (leased line)
+XProxy -[#FF7F0E]-> KH : 10) FIX execution flow
+XProxy -[#FF7F0E]-> GS : 11) FIX execution flow
+
+ETA -[#1F77B4]-> WebEdge : 12) Market-data subscription (watchlist/instruments)
+WebEdge -[#1F77B4]-> EcommApp : 13) Subscription request
+EcommApp -[#1F77B4]-> EtaProxy : 14) Forward subscription
+EtaProxy -[#1F77B4]-> LB : 15) Route to enterprise
+LB -[#1F77B4]-> J2EE : 16) ETS subscription processing
+J2EE -[#D62728]-> Feed : 17) Subscribe via internal low-latency path
+Feed -[#2CA02C]-> XProxy : 18) Proprietary ticker protocol (leased line)
+XProxy -[#2CA02C]-> DZH : 19) Subscribe/request market feed
+DZH -[#2CA02C]-> XProxy : 20) Tick updates
+XProxy -[#2CA02C]-> Feed : 21) Market data ingress
+Feed -[#D62728]-> SSE : 22) CORBA IIOP market-data stream
+SSE -[#17BECF]-> ETA : 23) SSE fan-out to subscribed clients
+
+J2EE <-[#D62728]-> Feed : CORBA IIOP (latency-sensitive)
+J2EE <-[#D62728]-> OMS : CORBA IIOP (latency-sensitive)
+J2EE -[#9467BD]-> MQ : ActiveMQ topics (business events)
+OMS -[#9467BD]-> MQ : ActiveMQ topics
+Feed -[#9467BD]-> MQ : ActiveMQ topics
+Batch -[#9467BD]-> MQ : ActiveMQ topics
+
+J2EE --> Oracle : Orders, accounts, reference data
+OMS --> Oracle : Order lifecycle and risk state
+Feed --> Oracle : Market snapshots/cache metadata
+Batch --> Oracle : End-of-day processing and reconciliation
+
+note right of SSE
+Optimization:
+A single instrument stream is carried from
+enterprise feed services to web layer,
+then fanned out by SSE Session Manager
+to multiple ETA clients.
+This reduces duplicate cross-zone traffic.
+end note
+
+legend right
+|= Trust Boundary |= Color |
+| UOB eComm Zone (parent) | <back:EEF5FF>  </back> |
+| UOB eComm Web Zone | <back:DDEEFF>  </back> |
+| UOB eComm Application Zone | <back:E8F7E8>  </back> |
+| UOB eComm Integration Zone | <back:FFF4D6>  </back> |
+| UOB Enterprise ETS Core | <back:F3E8FF>  </back> |
+| UOB Data Layer | <back:FFE8E8>  </back> |
+| UOB Extranet Zone | <back:EAF7F7>  </back> |
+| External Parties | <back:F2F2F2>  </back> |
+----
+|= Flow Class |= Protocol / Usage |
+| <color:#1F77B4>Customer API</color> | HTTPS request and control flows |
+| <color:#17BECF>Real-time client push</color> | SSE delivery to mobile clients |
+| <color:#D62728>Low-latency internal</color> | CORBA IIOP market-data/order paths |
+| <color:#9467BD>Async internal events</color> | ActiveMQ topics |
+| <color:#FF7F0E>Broker execution</color> | FIX |
+| <color:#2CA02C>External market data</color> | Proprietary ticker feed over leased line |
+endlegend
+
+@enduml
+
