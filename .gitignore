@@ -43,3 +43,5 @@ build/
 /libs/
 /runlog.log
 /tensor-flow-example/libs/
+/todo-app-api/data/todo-app-api.mv.db
+/todo-app-api/data/todo-app-api.lock.db
